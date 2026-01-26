@@ -1,0 +1,71 @@
+[
+    {
+        "type": "function",
+        "function": {
+            "name": "get_fund_daily",
+            "description": "使用akshare获取基金日线数据",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "fund_code": {
+                        "type": "string",
+                        "description": "基金代码",
+                        "examples": ["000001", "110022", "161005"]
+                    },
+                    "period": {
+                        "type": "string",
+                        "description": "时间段，可选值：1月, 3月, 6月, 1年, 3年, 5年, 今年来, 成立来",
+                        "default": "1年",
+                        "examples": ["1年", "3年", "成立来"]
+                    }
+                },
+                "required": ["fund_code"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "calculate_factors",
+            "description": "计算基金因子和技术指标，包括年化收益率、最大回撤、年化波动率、夏普比率、MA均线、布林带、EMA、MACD、RSI等所有技术指标。如果本地文件不存在会自动获取数据",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "fund_code": {
+                        "type": "string",
+                        "description": "基金代码，如：000001",
+                        "examples": ["000001", "110022", "161005"]
+                    },
+                    "period": {
+                        "type": "string",
+                        "description": "时间段，可选值：1月, 3月, 6月, 1年, 3年, 5年, 今年来, 成立来，默认1年",
+                        "default": "1年",
+                        "examples": ["1年", "3年", "成立来"]
+                    }
+                },
+                "required": ["fund_code"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "calculate_multiple_factors",
+            "description": "计算多个基金的因子",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "fund_code_list": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "基金代码列表",
+                        "examples": [["000001", "110022"], ["161005"]]
+                    }
+                },
+                "required": ["fund_code_list"]
+            }
+        }
+    }
+]

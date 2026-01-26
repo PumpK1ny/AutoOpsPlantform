@@ -1,0 +1,111 @@
+[
+    {
+        "type": "function",
+        "function": {
+            "name": "get_fast_news",
+            "description": "获取焦点快速新闻，返回包含新闻概览、发布时间和页面编码的字典",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_fund_news",
+            "description": "获取基金新闻，返回包含新闻概览、发布时间和页面编码的字典",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_page_news",
+            "description": "获取具体页面的新闻文章内容",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "page": {
+                        "type": "string",
+                        "description": "页面码，如：202501251234567890",
+                        "examples": ["202501251234567890", "202501241234567890"]
+                    }
+                },
+                "required": ["page"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_multi_page_news",
+            "description": "获取多个具体页面的新闻文章内容，是get_page_news的扩展，当需要获取多个页面的新闻文章时，使用此函数，返回包含多个页面新闻文章内容的字典",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "page_code_list": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "页面码列表",
+                        "examples": [["202501251234567890", "202501241234567890"]]
+                    }
+                },
+                "required": ["page_code_list"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_dongfang_notice",
+            "description": "获取东方财富基金公告，将结果保存到data/dongfang_notice.json文件中，返回包含标题、索引、日期的简化列表",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "page": {
+                        "type": "integer",
+                        "description": "页码，默认为1",
+                        "default": 1,
+                        "examples": [1, 2, 3]
+                    },
+                    "page_size": {
+                        "type": "integer",
+                        "description": "每页数量，默认为5，因为PDF提取较慢，建议设置较小的值",
+                        "default": 5,
+                        "examples": [3, 5, 10]
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_dongfang_notice",
+            "description": "根据索引列表提取指定索引对应的公告的标题、日期和具体的公告内容",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "idxs": {
+                        "type": "array",
+                        "items": {
+                            "type": "integer"
+                        },
+                        "description": "公告索引列表，对应公告的序号",
+                        "examples": [[1, 2, 3], [1, 5, 10]]
+                    }
+                },
+                "required": ["idxs"]
+            }
+        }
+    }
+]
