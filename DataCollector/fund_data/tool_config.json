@@ -67,5 +67,24 @@
                 "required": ["fund_code_list"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_sector_fund_flow",
+            "description": "获取东方财富网板块资金流向数据",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "fid": {
+                        "type": "string",
+                        "description": "时间维度，可选值：今日, 5日, 10日，默认今日",
+                        "default": "今日",
+                        "examples": ["今日", "5日", "10日"]
+                    }
+                },
+                "required": []
+            }
+        }
     }
 ]

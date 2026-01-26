@@ -318,8 +318,9 @@ def get_dongfang_notice(page: int = 1, page_size: int = 5) -> dict:
             news_item["pdf_extract_success"] = False
             news_item["pdf_error"] = "非PDF文件"
     # 保存到文件
-    os.makedirs("data", exist_ok=True)
-    with open(f"data/dongfang_notice.json", "w", encoding="utf-8") as f:
+    json_dir = "data/json"
+    os.makedirs(json_dir, exist_ok=True)
+    with open(f"{json_dir}/dongfang_notice.json", "w", encoding="utf-8") as f:
         json.dump(news_result, f, ensure_ascii=False, indent=2)
     # 简化信息返回，只返回标题、索引、日期
     news_result["notice"] = [{"title": item["title"], "index": item["index"], "date": item["date"]} for item in news_result["notice"]]
@@ -340,7 +341,9 @@ def read_dongfang_notice(idxs: list[int] = [])-> dict:
         except ValueError:
             return "idxs must be a list of integers"
     final_result = {}
-    with open(f"data/dongfang_notice.json", "r", encoding="utf-8") as f:
+    # 从新路径读取文件
+    json_dir = "data/json"
+    with open(f"{json_dir}/dongfang_notice.json", "r", encoding="utf-8") as f:
         news_result = json.load(f)
     # 提取idx对应的标题+日期+公告内容
     for idx in idxs:

@@ -1,0 +1,14 @@
+[
+    {
+        "type": "function",
+        "function": {
+            "name": "get_hot_article_ranking",
+            "description": "获取东方财富基金吧48小时热门文章排行和一周热门文章排行，返回包含两个排行榜的JSON数据",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    }
+]
