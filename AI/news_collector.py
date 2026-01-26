@@ -1,3 +1,4 @@
+from time import clock_settime
 from AI.core import ZhipuChat
 from AI.config.news_collector_config.system_config import SYSTEM_PROMPT
 import DataCollector.fund_news.get_news as gn
