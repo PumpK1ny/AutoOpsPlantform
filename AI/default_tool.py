@@ -28,9 +28,6 @@ def write_file(file_path, content):
             "status": "error",
             "message": f"文件写入失败：{str(e)}"
         }
-
-
-
 def read_file(file_path, start_line=None, end_line=None):
     """
     读取文件内容，支持指定行范围
@@ -78,9 +75,6 @@ def read_file(file_path, start_line=None, end_line=None):
             "status": "error",
             "message": f"文件读取失败：{str(e)}"
         }
-
-
-
 def update_file(file_path, content, start_line, end_line=None):
     """
     更新文件内容，根据行范围参数来更新
@@ -130,8 +124,6 @@ def update_file(file_path, content, start_line, end_line=None):
             "status": "error",
             "message": f"文件更新失败：{str(e)}"
         }
-
-
 def list_files(dir_path='.'):
     """
     查看目录下的文件
@@ -178,8 +170,6 @@ def list_files(dir_path='.'):
             "status": "error",
             "message": f"目录读取失败：{str(e)}"
         }
-
-
 def run_command(command, timeout=60, cwd=None):
     """
     安全地运行命令
@@ -269,7 +259,59 @@ def run_command(command, timeout=60, cwd=None):
             "message": f"命令执行失败：{str(e)}",
             "command": command
         }
+class Todo:
+    def __init__(self):
+        self.todos={}
+    
+    def _log(self,finish=False):
+        if finish: # 当最后结束时，检查所有任务是否完成，如果还有任务没有标记为done，则执行后面的for循环
+            if not all(i == "done" for i in self.todos.values()):
+                pass
+            else:
+                return "success"
 
-
+        for todo in self.todos:
+            if self.todos[todo] == "wait":
+                print(f"⚪️ {todo}")
+            elif self.todos[todo] == "doing":
+                print(f"🚶 {todo}")
+            elif self.todos[todo] == "done":
+                print(f"✔ {todo}")
+    
+    def create(self,task_list):
+        try:
+            for task in task_list:
+                self.todos[task] = "wait"
+            self._log()
+        except Exception as e:
+            print(f"创建任务失败：{str(e)}")
+        return self.todos
+    
+    def doing(self,task):
+        try:
+            if task in self.todos:
+                self.todos[task] = "doing"
+                self._log()
+        except Exception as e:
+            print(f"更新任务失败：{str(e)}")
+        return self.todos
+    
+    def update(self,task):
+        try:
+            if task in self.todos:
+                self.todos[task] = "done"
+                self._log()
+        except Exception as e:
+            print(f"更新任务失败：{str(e)}")
+        return self.todos
+    
+    def finish(self):
+        try:
+            for task in self.todos:
+                self.todos[task] = "done"
+            self._log(True)
+        except Exception as e:
+            print(f"完成任务失败：{str(e)}")
+        return self.todos
 if __name__ == "__main__":
     print(read_file("example.txt"))

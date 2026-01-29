@@ -6,6 +6,9 @@ import time
 from dotenv import load_dotenv
 from zhipuai import ZhipuAI
 import AI.default_tool
+from AI.default_tool import Todo
+
+
 
 def import_global_functions(module):
     for name, obj in inspect.getmembers(module, inspect.isfunction):
@@ -54,10 +57,19 @@ class ZhipuChat:
         self.context.append({"role": "system", "content": self.system_prompt})
         
         self._tool_functions = {}
+        self.todo = Todo()
+        
+        self._register_todo_methods()
         
         self._load_tools()
         if extend_tools:
             self._load_tools(extend_tools)
+
+    def _register_todo_methods(self):
+        self._tool_functions["self.todo.create"] = self.todo.create
+        self._tool_functions["self.todo.doing"] = self.todo.doing
+        self._tool_functions["self.todo.update"] = self.todo.update
+        self._tool_functions["self.todo.finish"] = self.todo.finish
 
     def _load_tools(self, file_path=None):
         if not file_path:
@@ -89,7 +101,7 @@ class ZhipuChat:
             args = json.loads(args)
         #简化显示的args，限制每个参数的长度为15个字符，超过15个字符的参数用...表示
         args_short = {k: v[:15]+'···' if len(v) > 15 else v for k, v in args.items()}
-        self._log(f"\n\n⚙️执行工具函数: {func.__name__} 参数: {args_short}", level="info")
+        self._log(f"\n\n🔧 执行工具函数: {func.__name__} 参数: {args_short}", level="info")
         return func(**args)
 
     def _serialize_result(self, result):
@@ -97,16 +109,25 @@ class ZhipuChat:
             return None
         
         if hasattr(result, '__class__') and result.__class__.__name__ == 'DataFrame':
-            return result.to_dict('records')
+            return self._serialize_result(result.to_dict('records'))
         
         if hasattr(result, '__class__') and result.__class__.__name__ == 'Series':
-            return result.to_dict()
+            return self._serialize_result(result.to_dict())
         
         if hasattr(result, '__class__') and 'ndarray' in result.__class__.__name__:
-            return result.tolist()
+            return self._serialize_result(result.tolist())
         
-        if isinstance(result, (str, int, float, bool, list, dict)):
+        if hasattr(result, '__class__') and result.__class__.__name__ == 'Timestamp':
+            return str(result)
+        
+        if isinstance(result, (str, int, float, bool)):
             return result
+        
+        if isinstance(result, list):
+            return [self._serialize_result(item) for item in result]
+        
+        if isinstance(result, dict):
+            return {k: self._serialize_result(v) for k, v in result.items()}
         
         return str(result)
 
@@ -255,7 +276,7 @@ class ZhipuChat:
                                 "content": json.dumps({"error": f"Function {function_name} not found"}, ensure_ascii=False),
                                 "tool_call_id": tool_call['id']
                             })
-                            self._log(f"函数 {function_name} 未找到", level="error")
+                            self._log(f"\n\n⚠️函数 {function_name} 未找到", level="error")
                 return
             
             except Exception as e:

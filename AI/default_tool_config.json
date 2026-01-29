@@ -94,6 +94,72 @@
     {
         "type": "function",
         "function": {
+            "name": "self.todo.create",
+            "description": "创建待办事项列表",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task_list": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "任务列表"
+                    }
+                },
+                "required": ["task_list"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "self.todo.doing",
+            "description": "将任务标记为进行中",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task": {
+                        "type": "string",
+                        "description": "任务名称"
+                    }
+                },
+                "required": ["task"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "self.todo.update",
+            "description": "将任务标记为完成",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task": {
+                        "type": "string",
+                        "description": "任务名称"
+                    }
+                },
+                "required": ["task"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "self.todo.finish",
+            "description": "将所有任务标记为完成",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "run_command",
             "description": "安全地运行命令，包含危险命令黑名单和敏感路径检查，支持超时和工作目录设置",
             "parameters": {

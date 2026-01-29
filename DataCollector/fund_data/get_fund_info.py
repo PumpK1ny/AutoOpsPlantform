@@ -309,5 +309,5 @@ def get_sector_fund_flow(fid="今日"):
 if __name__ == "__main__":
     ...
     #calculate_daily_data("000001")
-    result = get_sector_fund_flow()
+    result = get_fund_daily("000001")
     print(result)
