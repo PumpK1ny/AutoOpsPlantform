@@ -1,0 +1,36 @@
+[
+    {
+        "type": "function",
+        "function": {
+            "name": "NewsCollector.run",
+            "description": "新闻采集Agent，用于采集基金相关的新闻内容",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "description": "The prompt for the NewsCollector agent"
+                    }
+                },
+                "required": ["message"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "FundAnalysiser.run",
+            "description": "基金分析Agent，用于分析基金相关技术指标",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "description": "The prompt for the FundAnalysiser agent"
+                    }
+                },
+                "required": ["message"]
+            }
+        }
+    }
+]

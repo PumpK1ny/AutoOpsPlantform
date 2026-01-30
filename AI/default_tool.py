@@ -287,15 +287,6 @@ class Todo:
             print(f"创建任务失败：{str(e)}")
         return self.todos
     
-    def doing(self,task):
-        try:
-            if task in self.todos:
-                self.todos[task] = "doing"
-                self._log()
-        except Exception as e:
-            print(f"更新任务失败：{str(e)}")
-        return self.todos
-    
     def update(self,task):
         try:
             if task in self.todos:

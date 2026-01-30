@@ -67,7 +67,6 @@ class ZhipuChat:
 
     def _register_todo_methods(self):
         self._tool_functions["self.todo.create"] = self.todo.create
-        self._tool_functions["self.todo.doing"] = self.todo.doing
         self._tool_functions["self.todo.update"] = self.todo.update
         self._tool_functions["self.todo.finish"] = self.todo.finish
 
@@ -100,7 +99,16 @@ class ZhipuChat:
         if isinstance(args, str):
             args = json.loads(args)
         #简化显示的args，限制每个参数的长度为15个字符，超过15个字符的参数用...表示
-        args_short = {k: v[:15]+'···' if len(v) > 15 else v for k, v in args.items()}
+        def truncate_value(v):
+            if isinstance(v, list):
+                v_str = str(v)
+                return v_str[:15] + '···' if len(v_str) > 15 else v
+            elif isinstance(v, str):
+                return v[:15] + '···' if len(v) > 15 else v
+            else:
+                v_str = str(v)
+                return v_str[:15] + '···' if len(v_str) > 15 else v
+        args_short = {k: truncate_value(v) for k, v in args.items()}
         self._log(f"\n\n🔧 执行工具函数: {func.__name__} 参数: {args_short}", level="info")
         return func(**args)
 
@@ -219,10 +227,11 @@ class ZhipuChat:
 
     def chat(self, message):
         self.context.append({"role": "user", "content": message})
-        
+
         max_retries = 3
         retry_count = 0
-        
+        final_content = ""
+
         while retry_count < max_retries:
             try:
                 while True:
@@ -238,31 +247,40 @@ class ZhipuChat:
                         stream=True
                     )
                     reasoning_content, content, final_tool_calls = self._process_stream_response(response)
-                    
+
                     if reasoning_content:
                         self.context.append({
                             "role": "assistant",
                             "content": reasoning_content
                         })
-                    
+
                     if content:
                         self.context.append({
                             "role": "assistant",
                             "content": content
                         })
-                    
+                        final_content = content
+
                     if not final_tool_calls:
                         break
-                    
+
                     for index, tool_call in final_tool_calls.items():
                         function_name = tool_call['function']['name']
                         function_args = tool_call['function']['arguments']
-                        
+
+                        # 判断是否为子Agent调用（以".run"结尾表示子Agent）
+                        is_sub_agent = function_name.endswith('.run')
+
                         func_ref = self._tool_functions.get(function_name)
                         if not func_ref:
                             func_ref = globals().get(function_name)
-                        
+
                         if func_ref:
+                            if is_sub_agent:
+                                print("\n\n")
+                                print("\033[33m" + "#" * 50 + "\033[0m")
+                                print("\033[33m" + " " * 15 + function_name + "\033[0m")
+                                print("\033[33m" + "#" * 50 + "\033[0m")
                             result = self._execute_func(func_ref, function_args)
                             serialized_result = self._serialize_result(result)
                             self.context.append({
@@ -277,8 +295,8 @@ class ZhipuChat:
                                 "tool_call_id": tool_call['id']
                             })
                             self._log(f"\n\n⚠️函数 {function_name} 未找到", level="error")
-                return
-            
+                return final_content
+
             except Exception as e:
                 error_str = str(e)
                 if "429" in error_str or "1302" in error_str or "并发数过高" in error_str:

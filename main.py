@@ -3,7 +3,7 @@ from AI.fund_analysiser import FundAnalysiser
 
 if __name__ == "__main__":
 
-    ai = FundAnalysiser()
+    ai = NewsCollector()
     while True:
         user_input = input("\n\n用户: ")
         if user_input.lower() == "exit":
