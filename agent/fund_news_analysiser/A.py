@@ -6,7 +6,7 @@ from agent.fund_news_analysiser.system_config import SYSTEM_PROMPT
 
 class Agent(ZhipuChat):
     def __init__(self):
-        super().__init__(system_prompt=SYSTEM_PROMPT, extend_tools="agent/fund_analysiser/sub_agent.json")
+        super().__init__(system_prompt=SYSTEM_PROMPT, extend_tools="agent/fund_news_analysiser/sub_agent.json")
         # 实例化子Agent并注册其run方法为工具函数
         self.news_collector = NewsCollector()
         self.fund_analysiser = FundAnalysiser()

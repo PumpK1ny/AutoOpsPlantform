@@ -1,0 +1,21 @@
+[
+  {
+    "role": "user",
+    "content": [
+      {
+        "type": "image_url",
+        "image_url": {
+          "url": "https://multimedia.nt.qq.com.cn/download?appid=1406&fileid=EhTcbnsrmBovcYOGdp14bslY-S2sQRjogQUg_goovPqRjtq4kgMyBHByb2RaEGBsRRtPkaGlg2a69WjLHIB6AidlggECZ3o&rkey=CAMSOLgthq-6lGU_7PI5I-J-jsmWoX-JYfe0Jzpzn2VZZxAi-fSZBoz5xZ7uAZ7MqutNjYZeYKCRChk9&spec=0"
+        }
+      },
+      {
+        "type": "text",
+        "text": "请分析这个表情包的内容，给它起一个有趣的中文名字（2-6个字），并给出3-5个相关标签。\n\n请按以下格式回复：\n名称：[表情包名称]\n标签：[标签1, 标签2, 标签3]\n描述：[简单描述表情包内容]"
+      }
+    ]
+  },
+  {
+    "role": "assistant",
+    "content": "名称：求二旬老人\n标签：求生活、二旬老人、生活不易\n描述：一个表情包，上面写着“求生活善待二旬老人”，表达了对生活的不满和无奈。"
+  }
+]

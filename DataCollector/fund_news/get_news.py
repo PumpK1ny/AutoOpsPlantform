@@ -5,6 +5,7 @@ import re
 import os
 from bs4 import BeautifulSoup
 from PyPDF2 import PdfReader
+from AI.summary_core import summarize_text
 def get_fast_news()-> dict:
     """
     获取焦点快速新闻
@@ -157,6 +158,8 @@ def get_multi_page_news(page_code_list: list)-> dict:
     datas = {}
     for page_code in page_code_list:
         page_news = get_page_news(page_code)
+        print(f"总结新闻{page_code}")
+        page_news = summarize_text(page_news)
         datas[f"news_{page_code}"] = page_news
     return datas
 def get_dongfang_notice_sub(page: int = 1, page_size: int = 10) -> dict:
@@ -348,11 +351,13 @@ def read_dongfang_notice(idxs: list[int] = [])-> dict:
     # 提取idx对应的标题+日期+公告内容
     for idx in idxs:
         for item in news_result["notice"]:
-            if item["index"] == idx:
+            if item["index"] == idx:              
+                print(f"总结公告{idx}")
+                summarize_result = summarize_text(item["pdf_content"])
                 final_result[f"notice_{idx}"] = {
                     "title": item["title"],
                     "date": item["date"],
-                    "pdf_content": item.get("pdf_content", "")
+                    "pdf_content": summarize_result
                 }
 
     return final_result
