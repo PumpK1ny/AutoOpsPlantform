@@ -1,0 +1,24 @@
+{
+  "tasks": [
+    {
+      "id": "news_summary",
+      "name": "每日新闻摘要",
+      "description": "每天晚上运行新闻摘要工作流",
+      "command": "D:\\PythonProject\\auto_fund\\.venv\\Scripts\\python.exe workflow/news_summry/run.py",
+      "schedule": {
+        "type": "daily",
+        "time": "00:00"
+      },
+      "enabled": true,
+      "working_directory": "d:\\PythonProject\\auto_fund",
+      "timeout": 2000
+    }
+  ],
+  "settings": {
+    "timezone": "Asia/Shanghai",
+    "log_level": "INFO",
+    "max_concurrent_tasks": 3,
+    "retry_count": 3,
+    "retry_delay": 60
+  }
+}

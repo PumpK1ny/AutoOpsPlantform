@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据分析结果展示</title>
+    <link rel="stylesheet" href="{{ url_for('serve_static', path='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- 侧边栏 -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1>📊 数据分析</h1>
+                <p class="subtitle">结果展示系统</p>
+            </div>
+            
+            <nav class="folder-nav">
+                <h3>📁 数据文件夹</h3>
+                <ul id="folderList">
+                    {% for folder in folders %}
+                    <li class="folder-item" data-folder="{{ folder.name }}">
+                        <span class="folder-icon">📂</span>
+                        <span class="folder-name">{{ folder.display_name }}</span>
+                        <span class="folder-count" id="count-{{ folder.name }}"></span>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </nav>
+
+            <div class="sidebar-footer">
+                <p>📅 {{ now.strftime('%Y年%m月%d日') }}</p>
+            </div>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <!-- 文件列表 -->
+            <div class="file-panel" id="filePanel">
+                <div class="panel-header">
+                    <h2 id="currentFolderName">📁 选择文件夹</h2>
+                    <span class="file-count" id="fileCount">共 0 个文件</span>
+                </div>
+                <div class="file-list" id="fileList">
+                    <div class="empty-state">
+                        <p>👈 请选择一个文件夹查看数据</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 内容展示区 -->
+            <div class="content-panel" id="contentPanel">
+                <div class="panel-header">
+                    <h2 id="currentFileName">📄 选择文件</h2>
+                    <div class="header-actions">
+                        <button class="btn btn-fullscreen" onclick="toggleFullscreen()">🔍 全屏</button>
+                        <button class="btn btn-refresh" onclick="refreshCurrentFile()">🔄 刷新</button>
+                    </div>
+                </div>
+                <div class="content-wrapper" id="contentWrapper">
+                    <div class="content-viewer" id="contentViewer">
+                        <div class="empty-state">
+                            <p>👆 请选择一个文件查看详情</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="{{ url_for('serve_static', path='js/app.js') }}"></script>
+</body>
+</html>

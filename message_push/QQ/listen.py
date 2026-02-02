@@ -7,7 +7,6 @@ import asyncio
 import os
 import sys
 import random
-import time
 
 # 加载环境变量
 from dotenv import load_dotenv
@@ -18,11 +17,8 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from message_push.QQ.handlers import load_handlers
-from message_push.QQ.ai_chat import chat_with_user, _sessions
-from message_push.QQ.emoji_manager import (
-    get_emoji_manager, save_emoji_from_url,
-    get_emoji_for_send, get_emoji_by_name_for_send
-)
+from message_push.QQ.ai_chat import chat_with_user, _sessions, queue_user_message, get_pending_messages, clear_pending_messages
+from message_push.QQ.api_key_manager import api_key_manager
 
 # 机器人凭证配置
 APPID = os.getenv("QQ_BOT_APPID", "102834902")
@@ -36,14 +32,16 @@ class MessageListener:
     QQ消息监听器
     支持监听指定关键词并自动回复指定内容
     未触发关键词时调用GLM进行对话
-    支持图片消息处理和表情包功能
+    支持文字对话和图片理解
+    支持请求取消和消息合并
     """
 
     def __init__(self):
         self._handlers: Dict[str, Callable] = {}
         self._default_reply: Optional[str] = None
         self._ai_enabled: bool = False
-        self.emoji_manager = get_emoji_manager()
+        self._user_requests: Dict[str, asyncio.Task] = {}
+        self._user_cancel_events: Dict[str, asyncio.Event] = {}
 
     def register(self, keyword: str, handler: Callable):
         """注册关键词处理器"""
@@ -73,90 +71,114 @@ class MessageListener:
                 return handler
         return None
 
-    async def _send_emoji_reply(self, api, message, text: str, emoji_name: str, msg_type: str):
-        """发送带表情包的回复"""
-        try:
-            # 获取用户openid
-            user_openid = getattr(message.author, 'user_openid', getattr(message.author, 'id', 'unknown'))
-
-            # 1. 先发送文本回复
-            if msg_type in ["C2C单聊", "私信"]:
-                await api.post_c2c_message(
-                    openid=user_openid,
-                    msg_type=0,
-                    content=text,
-                    msg_seq=1
-                )
-            else:
-                await message.reply(content=text)
-            logger.info(f"🤖 AI文本回复: {text[:50]}...")
-
-            # 2. 查找并发送表情包
-            if emoji_name:
-                # 先尝试精确匹配
-                emoji_path = get_emoji_for_send(emoji_name)
-                if not emoji_path:
-                    # 尝试按名称查找
-                    emoji_path = get_emoji_by_name_for_send(emoji_name)
-
-                if emoji_path and os.path.exists(emoji_path):
-                    # 根据消息类型选择发送方式
-                    if msg_type == "群聊@":
-                        # 群聊使用 file_image 参数
-                        await message.reply(content="", file_image=emoji_path)
-                        logger.info(f"😄 已发送表情包: {emoji_name}")
-                    elif msg_type in ["C2C单聊", "私信"]:
-                        # C2C暂不支持发送表情包（需要先上传到URL）
-                        logger.info(f"😄 表情包暂不支持C2C发送: {emoji_name}")
-                    else:
-                        logger.warning(f"⚠️ 未找到表情包: {emoji_name}")
-        except Exception as e:
-            logger.error(f"❌ 发送表情包失败: {e}")
-
     async def _handle_ai_reply(self, message, api, user_openid: str, content: str,
                                image_url: str = None, msg_type: str = "unknown"):
-        """处理AI回复（支持表情包）"""
+        """处理AI回复"""
         try:
-            # 定义压缩完成回调
+            status = api_key_manager.get_status()
+
+            if status["is_full"]:
+                await message.reply(content="⏳ 当前使用人数较多，正在等待发送...")
+                logger.info(f"⏳ 用户 {user_openid} 需等待API密钥")
+
+            if user_openid in self._user_requests and not self._user_requests[user_openid].done():
+                logger.info(f"⚡ 用户 {user_openid} 有正在进行的请求，取消并合并消息")
+                if user_openid in self._user_cancel_events:
+                    self._user_cancel_events[user_openid].set()
+                await queue_user_message(user_openid, content, image_url)
+                if user_openid in _sessions and _sessions[user_openid]:
+                    if image_url:
+                        pending_msg = {"role": "user", "content": [{"type": "image_url", "image_url": {"url": image_url}}]}
+                    else:
+                        pending_msg = {"role": "user", "content": content}
+                    _sessions[user_openid].dialog_history.append(pending_msg)
+                return
+
+            if user_openid not in self._user_cancel_events:
+                self._user_cancel_events[user_openid] = asyncio.Event()
+            else:
+                self._user_cancel_events[user_openid].clear()
+
             async def compress_callback(notify_msg: str):
                 await message.reply(content=notify_msg)
 
-            # 调用AI获取回复
-            result = chat_with_user(
-                user_openid,
-                content,
-                image_url=image_url,
-                compress_callback=lambda msg: asyncio.create_task(compress_callback(msg))
-            )
+            async def run_chat():
+                return await chat_with_user(
+                    user_openid,
+                    content,
+                    image_url=image_url,
+                    compress_callback=lambda msg: asyncio.create_task(compress_callback(msg)),
+                    cancel_event=self._user_cancel_events[user_openid]
+                )
 
-            text = result.get("text", "")
+            chat_task = asyncio.create_task(run_chat())
+            self._user_requests[user_openid] = chat_task
 
-            # 处理多次发送（同时按 || 和 \n\n 分割）
+            result = await chat_task
+
+            del self._user_requests[user_openid]
+
+            is_cancelled = result.get("cancelled", False)
+            text = result.get("text", "") if not is_cancelled else ""
+
+            pending = await get_pending_messages(user_openid)
+            if pending or is_cancelled:
+                message_parts = [content] if content else []
+                for p in pending:
+                    if p["message"]:
+                        message_parts.append(p["message"])
+                combined_message = "\n".join(message_parts)
+                combined_image_url = image_url or (pending[0]["image_url"] if pending else None)
+                combined_image_base64 = None or (pending[0]["image_base64"] if pending else None)
+                await clear_pending_messages(user_openid)
+
+                logger.info(f"🔄 用户 {user_openid} 有待处理消息，合并发送: {combined_message[:50]}...")
+
+                if user_openid not in self._user_cancel_events:
+                    self._user_cancel_events[user_openid] = asyncio.Event()
+                else:
+                    self._user_cancel_events[user_openid].clear()
+
+                async def run_combined_chat():
+                    return await chat_with_user(
+                        user_openid,
+                        combined_message,
+                        image_url=combined_image_url,
+                        image_base64=combined_image_base64,
+                        compress_callback=lambda msg: asyncio.create_task(compress_callback(msg)),
+                        cancel_event=self._user_cancel_events[user_openid]
+                    )
+
+                combined_task = asyncio.create_task(run_combined_chat())
+                self._user_requests[user_openid] = combined_task
+                result = await combined_task
+                del self._user_requests[user_openid]
+
+                is_cancelled = result.get("cancelled", False)
+                text = result.get("text", "") if not is_cancelled else ""
+
+            if is_cancelled:
+                return
+
             messages = [text]
-            
-            # 第一步：按 || 分割
+
             if r"||" in text:
                 temp_messages = []
                 for msg in messages:
                     temp_messages.extend(msg.split(r"||"))
                 messages = temp_messages
-            
-            # 第二步：对每个部分按 \n\n 分割
+
             if "\n\n" in text:
                 temp_messages = []
                 for msg in messages:
                     temp_messages.extend(msg.split("\n\n"))
                 messages = temp_messages
-            
-            # 过滤空消息
-            messages = [msg.strip() for msg in messages if msg.strip()]   
-            # 获取用户openid
+
+            messages = [msg.strip() for msg in messages if msg.strip()]
             user_openid = getattr(message.author, 'user_openid', getattr(message.author, 'id', 'unknown'))
 
-            # 纯文本回复，支持多次发送
             for i, msg in enumerate(messages):
                 if msg.strip():
-                    # 使用api直接发送，避免reply的去重问题
                     await api.post_c2c_message(
                         openid=user_openid,
                         msg_type=0,
@@ -167,88 +189,40 @@ class MessageListener:
                         await asyncio.sleep(random.uniform(0.5, 1))
             logger.info(f"🤖 AI回复: {text[:50]}...")
 
+        except asyncio.CancelledError:
+            logger.info(f"⏹️ 用户 {user_openid} 的请求已取消")
+            if user_openid in self._user_requests:
+                del self._user_requests[user_openid]
         except Exception as e:
             logger.error(f"❌ AI回复失败: {e}")
-
-    async def _process_emoji(self, attachment, user_openid: str):
-        """处理表情包（保存并命名）"""
-        try:
-            # 1. 下载保存表情包
-            emoji_id = await save_emoji_from_url(attachment.url, attachment.content_type)
-            if not emoji_id:
-                return None
-
-            # 2. 使用AI分析并命名表情包
-            from message_push.QQ.ai_chat import ChatAI
-
-            temp_ai = ChatAI(f"emoji_namer_{emoji_id}")
-            prompt = f"""请分析这个表情包的内容，给它起一个有趣的中文名字（2-6个字），并给出3-5个相关标签。
-
-请按以下格式回复：
-名称：[表情包名称]
-标签：[标签1, 标签2, 标签3]
-描述：[简单描述表情包内容]"""
-
-            result = temp_ai.chat(prompt, image_url=attachment.url)
-            text = result.get("text", "") if isinstance(result, dict) else result
-
-            # 解析AI回复
-            name = None
-            tags = []
-
-            for line in text.split('\n'):
-                if line.startswith('名称：') or line.startswith('名称:'):
-                    name = line.split('：', 1)[-1].split(':', 1)[-1].strip()
-                elif line.startswith('标签：') or line.startswith('标签:'):
-                    tags_str = line.split('：', 1)[-1].split(':', 1)[-1].strip()
-                    tags = [t.strip() for t in tags_str.replace('，', ',').split(',') if t.strip()]
-
-            if name:
-                self.emoji_manager.update_emoji_name(emoji_id, name, tags)
-                logger.info(f"✅ AI命名表情包: {name} (ID: {emoji_id})")
-                return name
-
-            return emoji_id
-        except Exception as e:
-            logger.error(f"❌ 处理表情包失败: {e}")
-            return None
+            if user_openid in self._user_requests:
+                del self._user_requests[user_openid]
 
     async def handle_message(self, message, api, msg_type: str = "unknown"):
         """处理消息"""
         content = message.content or ""
         user_openid = getattr(message.author, 'user_openid', getattr(message.author, 'id', 'unknown'))
 
-        # 检查是否有图片附件
         image_url = None
-        is_emoji = False
         if hasattr(message, 'attachments') and message.attachments:
             for attachment in message.attachments:
                 if attachment.content_type.startswith('image/'):
                     image_url = attachment.url
                     logger.info(f"[{msg_type}] 用户 {user_openid} 发送图片: {image_url}")
-
-                    # 判断是否为表情包（小尺寸图片）
-                    if attachment.size and attachment.size < 500 * 1024:  # 小于500KB认为是表情包
-                        is_emoji = True
-                        # 异步处理表情包（保存并命名）
-                        asyncio.create_task(self._process_emoji(attachment, user_openid))
                     break
 
         logger.info(f"[{msg_type}] 用户 {user_openid}: {content[:50]}...")
 
-        # 1. 查找关键词处理器（优先执行，不走AI）
         handler = self._find_handler(content)
 
         if handler:
             try:
                 reply_content = handler(message)
-                # 如果返回的是协程，需要await
                 if asyncio.iscoroutine(reply_content):
                     reply_content = await reply_content
 
-                # 使用 is not None 判断，允许返回空字符串表示已处理但不回复
                 if reply_content is not None:
-                    if reply_content:  # 如果有内容则发送回复
+                    if reply_content:
                         await message.reply(content=reply_content)
                         logger.info(f"✅ 关键词回复: {reply_content[:50]}...")
                     else:
@@ -259,12 +233,10 @@ class MessageListener:
             except Exception as e:
                 logger.error(f"❌ 处理器执行失败: {e}")
 
-        # 2. 使用AI回复（支持图片和表情包）
         if self._ai_enabled:
             await self._handle_ai_reply(message, api, user_openid, content, image_url, msg_type)
             return
 
-        # 3. 默认回复
         if self._default_reply:
             try:
                 await message.reply(content=self._default_reply)
@@ -273,7 +245,6 @@ class MessageListener:
                 logger.error(f"❌ 发送默认回复失败: {e}")
 
 
-# 全局监听器实例
 listener = MessageListener()
 
 
@@ -314,25 +285,19 @@ def run_listener(enable_ai: bool = True):
     logger.info("🚀 QQ消息监听器启动中...")
     logger.info("=" * 50)
 
-    # 1. 加载处理器
     setup_handlers()
 
-    # 2. 启用AI
     if enable_ai:
         listener.enable_ai()
 
-    # 3. 设置默认回复
     listener.set_default_reply("抱歉，我暂时无法处理您的请求，请稍后再试。")
 
-    # 4. 设置需要监听的事件意图
     intents = botpy.Intents.none()
     intents.direct_message = True
     intents.public_messages = True
 
-    # 5. 初始化客户端
     client = MyClient(intents=intents)
 
-    # 6. 启动机器人
     logger.info("=" * 50)
     logger.info("✅ 机器人已启动，等待用户消息...")
     logger.info("=" * 50)
