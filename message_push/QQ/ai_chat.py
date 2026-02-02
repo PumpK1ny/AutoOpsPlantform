@@ -121,7 +121,6 @@ class ChatAI:
     def __init__(self, user_openid: str):
         self.user_openid = user_openid
         self.text_model = os.getenv("QQCHAT_TEXT_MODEL", "glm-4.7-flash")
-        self.vision_model = os.getenv("QQCHAT_VISION_MODEL", "glm-4.6v-flash")
         self.base_system_prompt = load_system_prompt()
         self.system_prompt = self.base_system_prompt
 
@@ -169,13 +168,11 @@ class ChatAI:
                 await self.compress_callback(f"⚠️ 上下文压缩失败: {e}")
             return False
 
-    async def chat(self, message: str, image_url: str = None, image_base64: str = None,
-                   cancel_event: asyncio.Event = None) -> dict:
+    async def chat(self, message: str, cancel_event: asyncio.Event = None) -> dict:
         """
         发送消息并获取回复
-        根据是否有图片自动切换模型：
-        - 无图片：使用 QQCHAT_TEXT_MODEL (glm-4.7-flash)
-        - 有图片：使用 QQCHAT_VISION_MODEL (glm-4.6v-flash)
+        仅使用文本模型 QQCHAT_TEXT_MODEL (glm-4.7-flash)
+        忽略所有图片内容
         
         使用API密钥管理器处理并发请求
         
@@ -191,25 +188,13 @@ class ChatAI:
         if cancel_event is None:
             cancel_event = asyncio.Event()
 
-        has_image = image_url or image_base64
-        model = self.vision_model if has_image else self.text_model
+        model = self.text_model
 
-        if not has_image:
-            compress_result = await self.check_and_compress()
-            if compress_result:
-                return {"text": "🔄 检测到对话历史较长，正在自动压缩上下文..."}
+        compress_result = await self.check_and_compress()
+        if compress_result:
+            return {"text": "🔄 检测到对话历史较长，正在自动压缩上下文..."}
 
-        if has_image:
-            content = []
-            if image_url:
-                content.append({"type": "image_url", "image_url": {"url": image_url}})
-            elif image_base64:
-                content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}})
-            if message:
-                content.append({"type": "text", "text": message})
-            user_message = {"role": "user", "content": content}
-        else:
-            user_message = {"role": "user", "content": message}
+        user_message = {"role": "user", "content": message}
 
         self.dialog_history.append(user_message)
 
@@ -276,16 +261,13 @@ _pending_messages = {}
 _pending_lock = asyncio.Lock()
 
 
-async def queue_user_message(user_openid: str, message: str, image_url: str = None,
-                              image_base64: str = None) -> None:
+async def queue_user_message(user_openid: str, message: str) -> None:
     """将用户消息加入待处理队列"""
     async with _pending_lock:
         if user_openid not in _pending_messages:
             _pending_messages[user_openid] = []
         _pending_messages[user_openid].append({
-            "message": message,
-            "image_url": image_url,
-            "image_base64": image_base64
+            "message": message
         })
 
 
@@ -309,8 +291,7 @@ async def has_pending_messages(user_openid: str) -> bool:
         return len(_pending_messages.get(user_openid, [])) > 0
 
 
-async def chat_with_user(user_openid: str, message: str, image_url: str = None,
-                         image_base64: str = None, compress_callback=None,
+async def chat_with_user(user_openid: str, message: str, compress_callback=None,
                          cancel_event: asyncio.Event = None) -> dict:
     """
     与指定用户对话
@@ -336,12 +317,10 @@ async def chat_with_user(user_openid: str, message: str, image_url: str = None,
             if p["message"]:
                 message_parts.append(p["message"])
         combined_message = "\n".join(message_parts)
-        combined_image_url = image_url or (pending[0]["image_url"] if pending else None)
-        combined_image_base64 = image_base64 or (pending[0]["image_base64"] if pending else None)
         await clear_pending_messages(user_openid)
-        return await _sessions[user_openid].chat(combined_message, combined_image_url, combined_image_base64, cancel_event)
+        return await _sessions[user_openid].chat(combined_message, cancel_event)
 
-    return await _sessions[user_openid].chat(message, image_url, image_base64, cancel_event)
+    return await _sessions[user_openid].chat(message, cancel_event)
 
 
 def get_api_status():

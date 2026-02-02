@@ -12,6 +12,22 @@ from flask import Flask, render_template, jsonify, send_from_directory, request
 
 app = Flask(__name__)
 
+# 加载重启密码
+PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ENV_FILE = os.path.join(PROJECT_DIR, ".env")
+RESTART_PASSWORD = None
+
+if os.path.exists(ENV_FILE):
+    with open(ENV_FILE, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith("SERVICE_RESTART_PASSWORD="):
+                RESTART_PASSWORD = line.split("=", 1)[1].strip()
+                break
+
+if not RESTART_PASSWORD:
+    RESTART_PASSWORD = "Eros@@@"  # 默认密码
+
 RESULT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "result")
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
@@ -259,6 +275,100 @@ def api_service_logs(service_id):
     return jsonify({
         "service": service_id,
         "logs": logs,
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    })
+
+
+# 允许重启的服务白名单
+ALLOWED_SERVICES = {
+    "auto-fund-web",
+    "auto-fund-qq",
+    "auto-fund-scheduler"
+}
+
+
+def restart_systemd_service(service_id):
+    """
+    重启 systemd 服务
+    返回 (success: bool, message: str)
+    """
+    if service_id not in ALLOWED_SERVICES:
+        return False, "不允许重启此服务"
+
+    service_name = f"{service_id}.service"
+
+    try:
+        # 首先检查服务是否存在
+        result = subprocess.run(
+            ["systemctl", "status", service_name],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+
+        # 服务不存在
+        if result.returncode != 0 and "could not be found" in result.stderr.lower():
+            return False, f"服务 {service_name} 不存在"
+
+        # 执行重启命令
+        restart_result = subprocess.run(
+            ["sudo", "systemctl", "restart", service_name],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+
+        if restart_result.returncode == 0:
+            # 等待一下，然后检查服务状态
+            import time
+            time.sleep(1)
+
+            status_result = subprocess.run(
+                ["systemctl", "is-active", service_name],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+
+            if status_result.returncode == 0 and status_result.stdout.strip() == "active":
+                return True, "服务重启成功"
+            else:
+                return False, "服务已重启但未能正常启动，请查看日志"
+        else:
+            error_msg = restart_result.stderr.strip() if restart_result.stderr else "未知错误"
+            return False, f"重启失败: {error_msg}"
+
+    except subprocess.TimeoutExpired:
+        return False, "重启操作超时"
+    except FileNotFoundError as e:
+        return False, f"命令不存在: {str(e)}"
+    except Exception as e:
+        return False, f"重启出错: {str(e)}"
+
+
+@app.route("/api/system/restart/<service_id>", methods=["POST"])
+def api_restart_service(service_id):
+    """
+    重启指定服务
+    需要 POST 请求，并包含密码验证
+    """
+    # 获取请求数据
+    data = request.get_json(silent=True) or {}
+
+    # 安全检查：密码验证
+    provided_password = data.get("password", "")
+    if provided_password != RESTART_PASSWORD:
+        return jsonify({
+            "success": False,
+            "message": "密码错误"
+        }), 403
+
+    success, message = restart_systemd_service(service_id)
+
+    return jsonify({
+        "success": success,
+        "message": message,
+        "service": service_id,
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     })
 

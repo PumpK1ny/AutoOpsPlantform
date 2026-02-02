@@ -72,7 +72,7 @@ class MessageListener:
         return None
 
     async def _handle_ai_reply(self, message, api, user_openid: str, content: str,
-                               image_url: str = None, msg_type: str = "unknown"):
+                               msg_type: str = "unknown"):
         """处理AI回复"""
         try:
             status = api_key_manager.get_status()
@@ -85,12 +85,9 @@ class MessageListener:
                 logger.info(f"⚡ 用户 {user_openid} 有正在进行的请求，取消并合并消息")
                 if user_openid in self._user_cancel_events:
                     self._user_cancel_events[user_openid].set()
-                await queue_user_message(user_openid, content, image_url)
+                await queue_user_message(user_openid, content)
                 if user_openid in _sessions and _sessions[user_openid]:
-                    if image_url:
-                        pending_msg = {"role": "user", "content": [{"type": "image_url", "image_url": {"url": image_url}}]}
-                    else:
-                        pending_msg = {"role": "user", "content": content}
+                    pending_msg = {"role": "user", "content": content}
                     _sessions[user_openid].dialog_history.append(pending_msg)
                 return
 
@@ -106,7 +103,6 @@ class MessageListener:
                 return await chat_with_user(
                     user_openid,
                     content,
-                    image_url=image_url,
                     compress_callback=lambda msg: asyncio.create_task(compress_callback(msg)),
                     cancel_event=self._user_cancel_events[user_openid]
                 )
@@ -128,8 +124,6 @@ class MessageListener:
                     if p["message"]:
                         message_parts.append(p["message"])
                 combined_message = "\n".join(message_parts)
-                combined_image_url = image_url or (pending[0]["image_url"] if pending else None)
-                combined_image_base64 = None or (pending[0]["image_base64"] if pending else None)
                 await clear_pending_messages(user_openid)
 
                 logger.info(f"🔄 用户 {user_openid} 有待处理消息，合并发送: {combined_message[:50]}...")
@@ -143,8 +137,6 @@ class MessageListener:
                     return await chat_with_user(
                         user_openid,
                         combined_message,
-                        image_url=combined_image_url,
-                        image_base64=combined_image_base64,
                         compress_callback=lambda msg: asyncio.create_task(compress_callback(msg)),
                         cancel_event=self._user_cancel_events[user_openid]
                     )
@@ -203,14 +195,7 @@ class MessageListener:
         content = message.content or ""
         user_openid = getattr(message.author, 'user_openid', getattr(message.author, 'id', 'unknown'))
 
-        image_url = None
-        if hasattr(message, 'attachments') and message.attachments:
-            for attachment in message.attachments:
-                if attachment.content_type.startswith('image/'):
-                    image_url = attachment.url
-                    logger.info(f"[{msg_type}] 用户 {user_openid} 发送图片: {image_url}")
-                    break
-
+        # 忽略图片附件，只处理文本消息
         logger.info(f"[{msg_type}] 用户 {user_openid}: {content[:50]}...")
 
         handler = self._find_handler(content)
@@ -234,7 +219,7 @@ class MessageListener:
                 logger.error(f"❌ 处理器执行失败: {e}")
 
         if self._ai_enabled:
-            await self._handle_ai_reply(message, api, user_openid, content, image_url, msg_type)
+            await self._handle_ai_reply(message, api, user_openid, content, msg_type)
             return
 
         if self._default_reply:

@@ -25,16 +25,23 @@ fi
 echo "[INFO] 停止服务..."
 systemctl stop auto-fund-web.service 2>/dev/null || true
 systemctl stop auto-fund-qq.service 2>/dev/null || true
+systemctl stop auto-fund-scheduler.service 2>/dev/null || true
 
 # 禁用服务
 echo "[INFO] 禁用开机自启..."
 systemctl disable auto-fund-web.service 2>/dev/null || true
 systemctl disable auto-fund-qq.service 2>/dev/null || true
+systemctl disable auto-fund-scheduler.service 2>/dev/null || true
 
 # 删除服务文件
 echo "[INFO] 删除服务文件..."
 rm -f /etc/systemd/system/auto-fund-web.service
 rm -f /etc/systemd/system/auto-fund-qq.service
+rm -f /etc/systemd/system/auto-fund-scheduler.service
+
+# 删除 Web 重启权限配置
+echo "[INFO] 删除 Web 重启权限配置..."
+rm -f /etc/sudoers.d/auto-fund-restart
 
 # 重新加载 systemd
 systemctl daemon-reload
