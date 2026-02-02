@@ -77,6 +77,9 @@ create_service "auto-fund-web" "$SCRIPT_DIR/start_web.sh" "Auto Fund Web Applica
 # 创建 QQ 机器人服务
 create_service "auto-fund-qq" "$SCRIPT_DIR/start_qq_bot.sh" "Auto Fund QQ Bot"
 
+# 创建调度器服务
+create_service "auto-fund-scheduler" "$SCRIPT_DIR/start_scheduler.sh" "Auto Fund Task Scheduler"
+
 # 重新加载 systemd
 echo ""
 echo "[INFO] 重新加载 systemd..."
@@ -86,12 +89,14 @@ systemctl daemon-reload
 echo "[INFO] 启用开机自启..."
 systemctl enable auto-fund-web.service
 systemctl enable auto-fund-qq.service
+systemctl enable auto-fund-scheduler.service
 
 # 启动服务
 echo ""
 echo "[INFO] 启动服务..."
 systemctl start auto-fund-web.service
 systemctl start auto-fund-qq.service
+systemctl start auto-fund-scheduler.service
 
 # 等待服务启动
 sleep 2
@@ -105,6 +110,7 @@ echo ""
 
 WEB_STATUS=$(systemctl is-active auto-fund-web.service)
 QQ_STATUS=$(systemctl is-active auto-fund-qq.service)
+SCHEDULER_STATUS=$(systemctl is-active auto-fund-scheduler.service)
 
 if [ "$WEB_STATUS" = "active" ]; then
     echo -e "Web 应用: ${GREEN}运行中${NC}"
@@ -118,6 +124,12 @@ else
     echo -e "QQ 机器人: ${RED}未运行 ($QQ_STATUS)${NC}"
 fi
 
+if [ "$SCHEDULER_STATUS" = "active" ]; then
+    echo -e "调度器: ${GREEN}运行中${NC}"
+else
+    echo -e "调度器: ${RED}未运行 ($SCHEDULER_STATUS)${NC}"
+fi
+
 echo ""
 echo "=========================================="
 echo "   安装完成"
@@ -126,11 +138,15 @@ echo ""
 echo "常用命令:"
 echo "  查看状态: sudo systemctl status auto-fund-web"
 echo "           sudo systemctl status auto-fund-qq"
+echo "           sudo systemctl status auto-fund-scheduler"
 echo "  停止服务: sudo systemctl stop auto-fund-web"
 echo "           sudo systemctl stop auto-fund-qq"
+echo "           sudo systemctl stop auto-fund-scheduler"
 echo "  重启服务: sudo systemctl restart auto-fund-web"
 echo "           sudo systemctl restart auto-fund-qq"
+echo "           sudo systemctl restart auto-fund-scheduler"
 echo "  查看日志: sudo journalctl -u auto-fund-web -f"
 echo "           sudo journalctl -u auto-fund-qq -f"
+echo "           sudo journalctl -u auto-fund-scheduler -f"
 echo ""
 echo -e "${GREEN}开机自启动已配置完成！${NC}"
