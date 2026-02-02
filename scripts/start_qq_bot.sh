@@ -5,7 +5,7 @@
 # 自动获取脚本所在目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-PYTHON="$PROJECT_DIR/.venv/bin/python"
+PYTHON="$PROJECT_DIR/venv/bin/python"
 APP="$PROJECT_DIR/message_push/QQ/run.py"
 
 echo "[INFO] 脚本目录: $SCRIPT_DIR"
