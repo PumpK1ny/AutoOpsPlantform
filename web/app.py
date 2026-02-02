@@ -5,8 +5,10 @@
 
 import os
 import json
+import subprocess
+import platform
 from datetime import datetime
-from flask import Flask, render_template, jsonify, send_from_directory
+from flask import Flask, render_template, jsonify, send_from_directory, request
 
 app = Flask(__name__)
 
@@ -132,6 +134,133 @@ def serve_static(path):
 def themes_preview():
     """配色方案预览页面"""
     return render_template("themes.html")
+
+
+def get_service_status(service_name):
+    """获取 systemd 服务状态"""
+    try:
+        # 检查服务是否正在运行
+        result = subprocess.run(
+            ["systemctl", "is-active", service_name],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        is_active = result.returncode == 0 and result.stdout.strip() == "active"
+
+        # 检查服务是否已启用（开机自启）
+        result = subprocess.run(
+            ["systemctl", "is-enabled", service_name],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        is_enabled = result.returncode == 0 and result.stdout.strip() == "enabled"
+
+        return {
+            "running": is_active,
+            "enabled": is_enabled
+        }
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+        # 如果 systemctl 不可用（非 Linux 系统）
+        return {
+            "running": False,
+            "enabled": False
+        }
+
+
+@app.route("/api/system/status")
+def api_system_status():
+    """获取系统服务状态 API"""
+    services = {
+        "auto-fund-web": {
+            "name": "Web 应用",
+            "description": "数据分析结果展示 Web 服务"
+        },
+        "auto-fund-qq": {
+            "name": "QQ 机器人",
+            "description": "QQ 消息推送机器人服务"
+        },
+        "auto-fund-scheduler": {
+            "name": "任务调度器",
+            "description": "定时任务调度服务"
+        }
+    }
+
+    result = []
+    for service_id, info in services.items():
+        status = get_service_status(f"{service_id}.service")
+        result.append({
+            "id": service_id,
+            "name": info["name"],
+            "description": info["description"],
+            "running": status["running"],
+            "enabled": status["enabled"]
+        })
+
+    return jsonify({
+        "services": result,
+        "platform": platform.system(),
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    })
+
+
+@app.route("/system")
+def system_status():
+    """系统状态页面"""
+    return render_template("system.html", now=datetime.now())
+
+
+def get_service_logs(service_id, lines=100):
+    """获取服务日志"""
+    log_files = {
+        "auto-fund-web": None,  # Web 应用使用 journalctl
+        "auto-fund-qq": "botpy.log",
+        "auto-fund-scheduler": "scheduler/scheduler.log"
+    }
+
+    log_file = log_files.get(service_id)
+
+    try:
+        if log_file:
+            # 从文件读取日志
+            log_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), log_file)
+            if os.path.exists(log_path):
+                with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
+                    all_lines = f.readlines()
+                    return "".join(all_lines[-lines:])
+            else:
+                return f"日志文件不存在: {log_file}"
+        else:
+            # 使用 journalctl 读取 systemd 服务日志
+            result = subprocess.run(
+                ["journalctl", "-u", f"{service_id}.service", "-n", str(lines), "--no-pager"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            if result.returncode == 0:
+                return result.stdout
+            else:
+                return f"无法读取日志: {result.stderr}"
+    except subprocess.TimeoutExpired:
+        return "读取日志超时"
+    except FileNotFoundError:
+        return "journalctl 命令不可用，请检查系统环境"
+    except Exception as e:
+        return f"读取日志出错: {str(e)}"
+
+
+@app.route("/api/system/logs/<service_id>")
+def api_service_logs(service_id):
+    """获取指定服务的日志"""
+    lines = request.args.get("lines", 100, type=int)
+    logs = get_service_logs(service_id, lines)
+    return jsonify({
+        "service": service_id,
+        "logs": logs,
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    })
 
 
 if __name__ == "__main__":

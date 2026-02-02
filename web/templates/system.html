@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系统状态 - 数据分析结果展示</title>
+    <link rel="stylesheet" href="{{ url_for('serve_static', path='css/style.css') }}">
+    <style>
+        .system-status-container {
+            padding: 30px;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .page-header {
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .page-header h1 {
+            font-size: 28px;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .page-header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .status-card {
+            background: #fff;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            border: 1px solid #e8e8e8;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .status-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+        }
+
+        .service-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .service-info h3 {
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 4px;
+        }
+
+        .service-info p {
+            font-size: 13px;
+            color: #888;
+        }
+
+        .status-badges {
+            display: flex;
+            gap: 10px;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .status-badge.running {
+            background: #e6f7e6;
+            color: #52c41a;
+        }
+
+        .status-badge.stopped {
+            background: #fff1f0;
+            color: #ff4d4f;
+        }
+
+        .status-badge.enabled {
+            background: #e6f7ff;
+            color: #1890ff;
+        }
+
+        .status-badge.disabled {
+            background: #f5f5f5;
+            color: #999;
+        }
+
+        .status-icon {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .status-icon.active {
+            background: currentColor;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .service-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid #f0f0f0;
+        }
+
+        .btn-action {
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            border: 1px solid #d9d9d9;
+            background: #fff;
+            color: #666;
+            transition: all 0.2s;
+        }
+
+        .btn-action:hover {
+            border-color: #1890ff;
+            color: #1890ff;
+        }
+
+        .btn-action.primary {
+            background: #1890ff;
+            color: #fff;
+            border-color: #1890ff;
+        }
+
+        .btn-action.primary:hover {
+            background: #40a9ff;
+            border-color: #40a9ff;
+        }
+
+        .refresh-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+            padding: 12px 16px;
+            background: #f6ffed;
+            border: 1px solid #b7eb8f;
+            border-radius: 8px;
+        }
+
+        .refresh-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: #52c41a;
+        }
+
+        .btn-refresh {
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            border: 1px solid #52c41a;
+            background: #fff;
+            color: #52c41a;
+            transition: all 0.2s;
+        }
+
+        .btn-refresh:hover {
+            background: #52c41a;
+            color: #fff;
+        }
+
+        .btn-refresh:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        .error-message {
+            background: #fff1f0;
+            border: 1px solid #ffccc7;
+            color: #ff4d4f;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: #666;
+            text-decoration: none;
+            font-size: 14px;
+            margin-bottom: 20px;
+            transition: color 0.2s;
+        }
+
+        .back-link:hover {
+            color: #1890ff;
+        }
+
+        .platform-info {
+            text-align: center;
+            padding: 20px;
+            color: #999;
+            font-size: 13px;
+            background: #fafafa;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+
+        /* 日志弹窗样式 */
+        .log-modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .log-modal-overlay.active {
+            display: flex;
+        }
+
+        .log-modal {
+            background: #fff;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 1000px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+        }
+
+        .log-modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid #e8e8e8;
+        }
+
+        .log-modal-header h3 {
+            font-size: 16px;
+            color: #333;
+        }
+
+        .log-modal-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-close {
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            border: 1px solid #d9d9d9;
+            background: #fff;
+            color: #666;
+        }
+
+        .btn-close:hover {
+            border-color: #ff4d4f;
+            color: #ff4d4f;
+        }
+
+        .log-content {
+            flex: 1;
+            overflow: auto;
+            padding: 16px 20px;
+            background: #1e1e1e;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            color: #d4d4d4;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-height: 60vh;
+        }
+
+        .log-content .log-line {
+            padding: 2px 0;
+        }
+
+        .log-content .log-info { color: #4fc1ff; }
+        .log-content .log-error { color: #f48771; }
+        .log-content .log-warning { color: #dcdcaa; }
+        .log-content .log-success { color: #4ec9b0; }
+
+        .log-loading {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        .lines-selector {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: #666;
+        }
+
+        .lines-selector select {
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid #d9d9d9;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div class="system-status-container">
+        <a href="/" class="back-link">← 返回首页</a>
+
+        <div class="page-header">
+            <h1>🖥️ 系统状态</h1>
+            <p>查看 Auto Fund 各服务的运行状态和开机自启配置</p>
+        </div>
+
+        <div class="refresh-bar">
+            <div class="refresh-info">
+                <span>📊</span>
+                <span id="lastUpdate">正在加载...</span>
+            </div>
+            <button class="btn-refresh" id="refreshBtn" onclick="loadStatus()">🔄 刷新</button>
+        </div>
+
+        <div id="servicesContainer">
+            <div class="loading">正在加载服务状态...</div>
+        </div>
+
+        <div class="platform-info" id="platformInfo"></div>
+    </div>
+
+    <!-- 日志查看弹窗 -->
+    <div class="log-modal-overlay" id="logModal">
+        <div class="log-modal">
+            <div class="log-modal-header">
+                <h3 id="logModalTitle">📋 服务日志</h3>
+                <div class="log-modal-actions">
+                    <div class="lines-selector">
+                        <label>显示行数:</label>
+                        <select id="linesSelector" onchange="changeLogLines()">
+                            <option value="50">50</option>
+                            <option value="100" selected>100</option>
+                            <option value="200">200</option>
+                            <option value="500">500</option>
+                        </select>
+                    </div>
+                    <button class="btn-action" onclick="refreshLogs()">🔄 刷新</button>
+                    <button class="btn-close" onclick="closeLogModal()">✕ 关闭</button>
+                </div>
+            </div>
+            <div class="log-content" id="logContent">
+                <div class="log-loading">正在加载日志...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentLogService = null;
+        let currentLogLines = 100;
+
+        async function loadStatus() {
+            const container = document.getElementById('servicesContainer');
+            const refreshBtn = document.getElementById('refreshBtn');
+            const lastUpdate = document.getElementById('lastUpdate');
+
+            refreshBtn.disabled = true;
+            refreshBtn.textContent = '⏳ 刷新中...';
+
+            try {
+                const response = await fetch('/api/system/status');
+                const data = await response.json();
+
+                if (data.services) {
+                    renderServices(data.services);
+                    document.getElementById('platformInfo').textContent =
+                        `平台: ${data.platform} | 更新时间: ${data.timestamp}`;
+                    lastUpdate.textContent = `上次更新: ${data.timestamp}`;
+                }
+            } catch (error) {
+                container.innerHTML = `
+                    <div class="error-message">
+                        ❌ 获取状态失败: ${error.message}
+                    </div>
+                `;
+                lastUpdate.textContent = '更新失败';
+            } finally {
+                refreshBtn.disabled = false;
+                refreshBtn.textContent = '🔄 刷新';
+            }
+        }
+
+        function renderServices(services) {
+            const container = document.getElementById('servicesContainer');
+
+            container.innerHTML = services.map(service => `
+                <div class="status-card">
+                    <div class="service-header">
+                        <div class="service-info">
+                            <h3>${service.name}</h3>
+                            <p>${service.description}</p>
+                        </div>
+                        <div class="status-badges">
+                            <span class="status-badge ${service.running ? 'running' : 'stopped'}">
+                                <span class="status-icon ${service.running ? 'active' : ''}"></span>
+                                ${service.running ? '运行中' : '已停止'}
+                            </span>
+                            <span class="status-badge ${service.enabled ? 'enabled' : 'disabled'}">
+                                ${service.enabled ? '✓ 已启用' : '✗ 未启用'}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="service-actions">
+                        <button class="btn-action" onclick="viewLogs('${service.id}', '${service.name}')">📋 查看日志</button>
+                        <button class="btn-action primary" onclick="restartService('${service.id}', '${service.name}')">🔄 重启服务</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function viewLogs(serviceId, serviceName) {
+            currentLogService = serviceId;
+            document.getElementById('logModalTitle').textContent = `📋 ${serviceName} - 日志`;
+            document.getElementById('logModal').classList.add('active');
+            await loadLogs();
+        }
+
+        async function loadLogs() {
+            if (!currentLogService) return;
+
+            const logContent = document.getElementById('logContent');
+            logContent.innerHTML = '<div class="log-loading">正在加载日志...</div>';
+
+            try {
+                const response = await fetch(`/api/system/logs/${currentLogService}?lines=${currentLogLines}`);
+                const data = await response.json();
+
+                if (data.logs) {
+                    // 格式化日志内容，添加颜色高亮
+                    const formattedLogs = formatLogs(data.logs);
+                    logContent.innerHTML = formattedLogs;
+                    // 滚动到底部
+                    logContent.scrollTop = logContent.scrollHeight;
+                } else {
+                    logContent.innerHTML = '<div class="log-loading">暂无日志</div>';
+                }
+            } catch (error) {
+                logContent.innerHTML = `<div class="log-loading" style="color: #ff4d4f;">加载日志失败: ${error.message}</div>`;
+            }
+        }
+
+        function formatLogs(logs) {
+            if (!logs) return '';
+
+            return logs.split('\n').map(line => {
+                let cssClass = 'log-line';
+                const lowerLine = line.toLowerCase();
+
+                if (lowerLine.includes('error') || lowerLine.includes('exception') || lowerLine.includes('failed')) {
+                    cssClass += ' log-error';
+                } else if (lowerLine.includes('warning') || lowerLine.includes('warn')) {
+                    cssClass += ' log-warning';
+                } else if (lowerLine.includes('success') || lowerLine.includes('completed') || lowerLine.includes('done')) {
+                    cssClass += ' log-success';
+                } else if (lowerLine.includes('info') || lowerLine.includes('[i]')) {
+                    cssClass += ' log-info';
+                }
+
+                // 转义 HTML 特殊字符
+                const escaped = line
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;');
+
+                return `<div class="${cssClass}">${escaped}</div>`;
+            }).join('');
+        }
+
+        function closeLogModal() {
+            document.getElementById('logModal').classList.remove('active');
+            currentLogService = null;
+        }
+
+        function refreshLogs() {
+            loadLogs();
+        }
+
+        function changeLogLines() {
+            currentLogLines = document.getElementById('linesSelector').value;
+            loadLogs();
+        }
+
+        function restartService(serviceId, serviceName) {
+            if (confirm(`确定要重启 ${serviceName} 服务吗?`)) {
+                alert(`请手动执行以下命令重启服务:\n\nsudo systemctl restart ${serviceId}.service`);
+            }
+        }
+
+        // 点击弹窗外部关闭
+        document.getElementById('logModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeLogModal();
+            }
+        });
+
+        // ESC 键关闭弹窗
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeLogModal();
+            }
+        });
+
+        // 页面加载时自动获取状态
+        loadStatus();
+
+        // 每 30 秒自动刷新
+        setInterval(loadStatus, 30000);
+    </script>
+</body>
+</html>
