@@ -1,14 +1,15 @@
 """对话压缩模块 - 用于压缩过长的对话历史"""
 
 import os
-from zhipuai import ZhipuAI
+import asyncio
+from api_key_manager import get_sync_client
 
 
 class ChatCompressor:
     """对话历史压缩器"""
 
     def __init__(self):
-        self.client = ZhipuAI(api_key=os.getenv("ZHIPU_API_KEY"))
+        self.client = get_sync_client()
         self.model = os.getenv("ZHIPU_DEFAULT_MODEL", "glm-4.7-flash")
 
     def compress(self, context: list) -> str:
@@ -60,7 +61,7 @@ class ChatCompressor:
 
         # 调用API进行压缩
         max_tokens = int(os.getenv("ZHIPU_DEFAULT_MAX_TOKENS", "5000"))
-        response = self.client.chat.completions.create(
+        response = self.client.chat_completions_create(
             model=self.model,
             messages=[
                 {"role": "system", "content": "你是一个专业的对话历史压缩助手，擅长提取和保留关键信息。请严格按照JSON格式输出。压缩后的长度要合适，不能过长或者过短。"},

@@ -11,8 +11,8 @@ from zhipuai import ZhipuAI
 # 加载环境变量
 load_dotenv()
 
-# 导入API密钥管理器
-from message_push.QQ.api_key_manager import (
+# 导入API密钥管理器（项目级别）
+from api_key_manager import (
     api_key_manager, get_wait_time_estimate
 )
 
