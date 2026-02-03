@@ -312,6 +312,26 @@ class AsyncAPIKeyManager:
         self._key_count = 0
         self._user_tracker = UserRequestTracker()
 
+    def register_user_request(self, user_openid: str, task: asyncio.Task, api_key_name: str):
+        """注册用户请求（用于跟踪和管理用户正在进行的请求）"""
+        self._user_tracker.add_request(user_openid, task, api_key_name)
+
+    def unregister_user_request(self, user_openid: str):
+        """注销用户请求"""
+        self._user_tracker.remove_request(user_openid)
+
+    def get_user_request(self, user_openid: str) -> Optional[dict]:
+        """获取用户正在进行的请求"""
+        return self._user_tracker.get_request(user_openid)
+
+    def is_user_processing(self, user_openid: str) -> bool:
+        """检查用户是否有正在进行的请求"""
+        return self._user_tracker.is_processing(user_openid)
+
+    def cancel_user_request(self, user_openid: str) -> bool:
+        """取消用户正在进行的请求"""
+        return self._user_tracker.cancel_request(user_openid)
+
     def _ensure_initialized(self):
         """确保已初始化（同步方法）"""
         if self._initialized:
@@ -366,6 +386,18 @@ class AsyncAPIKeyManager:
             except asyncio.QueueEmpty:
                 pass
 
+    def mark_success(self, key_info: APIKeyInfo):
+        """标记密钥请求成功"""
+        # 成功计数已在 get_api_key 中增加，这里可以添加其他逻辑
+        pass
+
+    def mark_error(self, key_info: APIKeyInfo, error: str):
+        """标记密钥请求出错"""
+        for name, info in self._keys.items():
+            if info.key == key_info.key:
+                info.error_count += 1
+                break
+
     def get_status(self) -> Dict[str, Any]:
         """获取管理器状态"""
         self._ensure_initialized()
@@ -401,6 +433,45 @@ class ZhipuAIClient:
 
     def chat_completions_create(self, **kwargs):
         return self._client.chat.completions.create(**kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._client, name)
+
+
+class ManagedAsyncZhipuClient:
+    """
+    托管的异步 ZhipuAI 客户端（跨进程安全）
+
+    使用示例：
+        async with ManagedAsyncZhipuClient() as client:
+            response = await client.chat_completions_create(...)
+    """
+
+    def __init__(self, timeout: Optional[float] = None):
+        self.timeout = timeout
+        self._key_info: Optional[APIKeyInfo] = None
+        self._client: Optional[ZhipuAI] = None
+
+    async def __aenter__(self) -> 'ManagedAsyncZhipuClient':
+        """获取客户端（异步上下文管理器入口）"""
+        self._key_info = await api_key_manager.get_api_key()
+        self._client = ZhipuAI(api_key=self._key_info.key)
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """释放客户端（异步上下文管理器出口）"""
+        if self._key_info:
+            await api_key_manager.release_api_key(self._key_info)
+            self._key_info = None
+        self._client = None
+
+    async def chat_completions_create(self, **kwargs):
+        """异步调用 chat.completions.create"""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: self._client.chat.completions.create(**kwargs)
+        )
 
     def __getattr__(self, name):
         return getattr(self._client, name)

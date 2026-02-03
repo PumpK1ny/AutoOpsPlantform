@@ -5,10 +5,9 @@ import threading
 import time
 import asyncio
 from dotenv import load_dotenv
-from zhipuai import ZhipuAI
 import AI.default_tool
 from AI.default_tool import Todo
-from api_key_manager import get_sync_client_managed, get_sync_client
+from api_key_manager import get_sync_client_managed
 
 
 
@@ -33,10 +32,9 @@ def get_env_int(key, default):
     return int(value)
 
 class ZhipuChat:
-    def __init__(self, api_key=None, model=None, system_prompt=None, extend_tools=None, use_managed_client=True):
+    def __init__(self, model=None, system_prompt=None, extend_tools=None):
         api_base_url = os.getenv("ZHIPU_API_URL", "https://open.bigmodel.cn/api/paas/v4")
 
-        self.api_key = api_key or os.getenv("ZHIPU_API_KEY")
         self.model = model or os.getenv("ZHIPU_DEFAULT_MODEL", "glm-4.7-flash")
         self.api_url = f"{api_base_url}/chat/completions"
         self.system_prompt = system_prompt or ""
@@ -48,18 +46,6 @@ class ZhipuChat:
         self.default_temperature = get_env_float("ZHIPU_DEFAULT_TEMPERATURE", "0.2")
         self.default_top_p = get_env_float("ZHIPU_DEFAULT_TOP_P", "0.2")
         self.stream_timeout = get_env_int("ZHIPU_STREAM_TIMEOUT", "60")
-
-        # 使用管理的客户端或原始客户端
-        self.use_managed_client = use_managed_client
-        if use_managed_client and not api_key:
-            # 使用项目级别的API密钥管理器（跨进程安全）
-            self._api_key_source = "managed"
-            self._client = None  # 延迟初始化，在chat方法中获取
-        else:
-            if not self.api_key:
-                raise ValueError("API密钥未提供，请设置环境变量ZHIPU_API_KEY或传入api_key参数")
-            self.client = ZhipuAI(api_key=self.api_key)
-            self._api_key_source = "direct"
 
         self.context = []
         self.tools = []
@@ -233,21 +219,6 @@ class ZhipuChat:
         finally:
             timeout_event.set()
 
-    def _call_api_with_managed_client(self, messages, tools=None, tool_choice=None):
-        """使用托管客户端调用API（跨进程安全）"""
-        with get_sync_client_managed() as client:
-            return client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                max_tokens=self.default_max_tokens,
-                temperature=self.default_temperature,
-                top_p=self.default_top_p,
-                thinking={"type": self.enable_depth_thinking},
-                tools=tools,
-                tool_choice=tool_choice,
-                stream=True
-            )
-
     def chat(self, message):
         self.context.append({"role": "user", "content": message})
 
@@ -258,15 +229,9 @@ class ZhipuChat:
         while retry_count < max_retries:
             try:
                 while True:
-                    # 根据客户端类型选择调用方式
-                    if self._api_key_source == "managed":
-                        response = self._call_api_with_managed_client(
-                            self.context,
-                            tools=self.tools if self.tools else None,
-                            tool_choice="auto" if self.tools else None
-                        )
-                    else:
-                        response = self.client.chat.completions.create(
+                    # 使用托管客户端调用API（跨进程安全，自动获取空闲密钥）
+                    with get_sync_client_managed() as client:
+                        response = client.chat.completions.create(
                             model=self.model,
                             messages=self.context,
                             max_tokens=self.default_max_tokens,
@@ -277,7 +242,7 @@ class ZhipuChat:
                             tool_choice="auto" if self.tools else None,
                             stream=True
                         )
-                    reasoning_content, content, final_tool_calls = self._process_stream_response(response)
+                        reasoning_content, content, final_tool_calls = self._process_stream_response(response)
 
                     if reasoning_content:
                         self.context.append({
@@ -352,12 +317,7 @@ class ZhipuChat:
         self.context = context
 
 if __name__ == "__main__":
-    import os
-    api_key = os.getenv("ZHIPU_API_KEY")
-    if not api_key:
-        api_key = input("请输入智普API密钥: ")
-
-    chat = ZhipuChat(api_key)
+    chat = ZhipuChat()
     print("开始对话，输入'退出'结束")
 
     while True:

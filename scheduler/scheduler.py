@@ -10,6 +10,11 @@ from typing import Dict, List, Optional
 import schedule
 import pytz
 
+try:
+    from .task_monitor import task_monitor
+except ImportError:
+    from task_monitor import task_monitor
+
 
 class ConfigWatcher(Thread):
     def __init__(self, scheduler: 'TaskScheduler', check_interval: int = 5):
@@ -95,17 +100,30 @@ class TaskRunner:
         self.logger.info(f"执行命令: {self.task.command}")
         self.logger.info(f"工作目录: {self.task.working_directory}")
 
+        # 记录任务开始到监控器
+        execution = task_monitor.start_task(
+            task_id=self.task.id,
+            task_name=self.task.name,
+            task_type="scheduled"
+        )
+
+        final_status = "failed"
+        final_output = ""
+        final_error = ""
+
         for attempt in range(self.settings.retry_count):
             try:
                 self.logger.info(f"第 {attempt + 1} 次尝试执行...")
                 result = self._execute_command()
                 self.last_run = datetime.now(pytz.timezone(self.settings.timezone))
-                
+
                 self.logger.info(f"子进程返回码: {result.returncode}")
-                
+
                 if result.returncode == 0:
                     self.last_status = "success"
                     self.last_output = result.stdout
+                    final_status = "completed"
+                    final_output = result.stdout
                     self.logger.info(f"任务 {self.task.name} 执行成功")
                     if result.stdout:
                         self.logger.info(f"输出: {result.stdout[:500]}")
@@ -113,30 +131,44 @@ class TaskRunner:
                 else:
                     self.last_status = "failed"
                     self.last_output = result.stderr
+                    final_status = "failed"
+                    final_error = result.stderr
                     self.logger.error(f"任务 {self.task.name} 执行失败")
                     if result.stderr:
                         self.logger.error(f"错误输出: {result.stderr[:500]}")
-                    
+
                     if attempt < self.settings.retry_count - 1:
                         self.logger.info(f"{self.settings.retry_delay}秒后重试...")
                         time.sleep(self.settings.retry_delay)
-                        
+
             except subprocess.TimeoutExpired as e:
                 self.last_status = "timeout"
                 self.last_output = f"任务执行超时 ({self.task.timeout}秒)"
+                final_status = "timeout"
+                final_error = f"任务执行超时 ({self.task.timeout}秒)"
                 self.logger.error(f"任务 {self.task.name} 执行超时 ({self.task.timeout}秒)")
-                
+
                 if attempt < self.settings.retry_count - 1:
                     time.sleep(self.settings.retry_delay)
-                    
+
             except Exception as e:
                 self.last_status = "error"
                 self.last_output = str(e)
+                final_status = "error"
+                final_error = str(e)
                 self.logger.error(f"任务 {self.task.name} 执行异常: {e}")
-                
+
                 if attempt < self.settings.retry_count - 1:
                     time.sleep(self.settings.retry_delay)
-        
+
+        # 记录任务结束到监控器
+        task_monitor.end_task(
+            task_id=self.task.id,
+            status=final_status,
+            output=final_output,
+            error=final_error
+        )
+
         self.logger.info(f"任务 {self.task.name} 执行结束，最终状态: {self.last_status}")
         self.running = False
 

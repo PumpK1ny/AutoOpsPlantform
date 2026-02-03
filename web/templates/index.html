@@ -541,6 +541,206 @@
             width: 95vw;
             max-width: 1400px;
         }
+
+        /* 运行中任务样式 */
+        .running-task-card {
+            background: var(--bg-glass);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            margin-bottom: 16px;
+            transition: all var(--transition-normal);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .running-task-card::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            background: var(--success);
+        }
+
+        .running-task-card:hover {
+            border-color: var(--success);
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
+        }
+
+        .running-task-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .running-task-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .running-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid var(--success);
+            border-radius: 20px;
+            font-size: 0.8rem;
+            color: var(--success);
+            font-weight: 600;
+        }
+
+        .running-indicator::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: var(--success);
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+        }
+
+        .running-task-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .running-task-info {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .running-task-info .label {
+            color: var(--text-muted);
+        }
+
+        .running-task-info .value {
+            color: var(--text-accent);
+            font-weight: 500;
+        }
+
+        .history-task-card {
+            background: var(--bg-glass);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 16px;
+            margin-bottom: 12px;
+            transition: all var(--transition-normal);
+        }
+
+        .history-task-card:hover {
+            border-color: var(--border-glow);
+        }
+
+        .history-task-card.completed {
+            border-left: 4px solid var(--success);
+        }
+
+        .history-task-card.failed {
+            border-left: 4px solid var(--danger);
+        }
+
+        .history-task-card.timeout {
+            border-left: 4px solid var(--warning);
+        }
+
+        .history-task-card.error {
+            border-left: 4px solid var(--danger);
+        }
+
+        .history-task-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .history-task-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .history-task-status {
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .history-task-status.completed {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--success);
+        }
+
+        .history-task-status.failed,
+        .history-task-status.error {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--danger);
+        }
+
+        .history-task-status.timeout {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--warning);
+        }
+
+        .history-task-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .no-tasks {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+
+        .no-tasks .icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            opacity: 0.3;
+        }
+
+        .task-type-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            margin-left: 8px;
+        }
+
+        .task-type-badge.manual {
+            background: rgba(59, 130, 246, 0.15);
+            color: var(--info);
+        }
+
+        .task-type-badge.scheduled {
+            background: rgba(139, 92, 246, 0.15);
+            color: #8b5cf6;
+        }
     </style>
 </head>
 <body>
@@ -574,6 +774,11 @@
 
                 <h3>⚙️ 系统管理</h3>
                 <ul>
+                    <li class="nav-item" onclick="showRunningTasks()">
+                        <span class="nav-icon">▶️</span>
+                        <span class="nav-name">运行中任务</span>
+                        <span class="status-indicator online" id="runningTaskIndicator" style="display: none;"></span>
+                    </li>
                     <li class="nav-item" onclick="showTaskManager()">
                         <span class="nav-icon">⏰</span>
                         <span class="nav-name">任务调度</span>
@@ -615,6 +820,34 @@
                     <div class="content-viewer" id="contentViewer">
                         <div class="empty-state">
                             <p>👆 请选择一个文件查看详情</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="content-panel content-section" id="runningTasksPanel">
+                <div class="panel-header">
+                    <h2>▶️ 运行中任务</h2>
+                    <div class="header-actions">
+                        <button class="btn btn-refresh" onclick="loadRunningTasks()">🔄 刷新</button>
+                        <button class="btn" onclick="loadTaskHistory()">📜 历史记录</button>
+                    </div>
+                </div>
+                <div class="content-wrapper">
+                    <div class="content-viewer">
+                        <div class="refresh-bar">
+                            <div class="refresh-info">
+                                <span>📊</span>
+                                <span id="runningTasksLastUpdate">正在加载...</span>
+                            </div>
+                            <span id="runningTasksCount" style="font-size: 0.85rem; color: var(--text-muted);"></span>
+                        </div>
+                        <div id="runningTasksContainer">
+                            <div class="loading">正在加载运行中任务...</div>
+                        </div>
+                        <div id="taskHistoryContainer" style="display: none; margin-top: 20px;">
+                            <h3 style="margin-bottom: 16px; color: var(--text-primary);">📜 最近执行历史</h3>
+                            <div id="taskHistoryList"></div>
                         </div>
                     </div>
                 </div>
@@ -770,6 +1003,7 @@
         function showDataFolder(folderName) {
             currentSection = 'data';
             closeMobileMenu();
+            stopRunningTasksAutoRefresh();
 
             document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
             document.querySelector(`.nav-item[data-folder="${folderName}"]`)?.classList.add('active');
@@ -777,12 +1011,13 @@
             document.querySelectorAll('.content-section').forEach(panel => panel.classList.remove('active'));
             document.getElementById('dataPanel').style.display = 'flex';
             document.getElementById('contentPanel').style.display = 'flex';
+            document.getElementById('runningTasksPanel').classList.remove('active');
 
             selectFolder(folderName);
         }
 
-        function showTaskManager() {
-            currentSection = 'task';
+        function showRunningTasks() {
+            currentSection = 'running';
             closeMobileMenu();
 
             document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
@@ -790,6 +1025,218 @@
 
             document.getElementById('dataPanel').style.display = 'none';
             document.getElementById('contentPanel').style.display = 'none';
+            document.getElementById('taskPanel').classList.remove('active');
+            document.getElementById('statusPanel').classList.remove('active');
+            document.getElementById('runningTasksPanel').classList.add('active');
+
+            loadRunningTasks();
+            // 启动自动刷新
+            startRunningTasksAutoRefresh();
+        }
+
+        let runningTasksRefreshInterval = null;
+
+        function startRunningTasksAutoRefresh() {
+            // 清除之前的定时器
+            if (runningTasksRefreshInterval) {
+                clearInterval(runningTasksRefreshInterval);
+            }
+            // 每 5 秒自动刷新一次
+            runningTasksRefreshInterval = setInterval(() => {
+                if (currentSection === 'running') {
+                    loadRunningTasks(false); // false 表示不显示加载动画
+                }
+            }, 5000);
+        }
+
+        function stopRunningTasksAutoRefresh() {
+            if (runningTasksRefreshInterval) {
+                clearInterval(runningTasksRefreshInterval);
+                runningTasksRefreshInterval = null;
+            }
+        }
+
+        async function loadRunningTasks(showLoading = true) {
+            const container = document.getElementById('runningTasksContainer');
+            const lastUpdate = document.getElementById('runningTasksLastUpdate');
+            const countDisplay = document.getElementById('runningTasksCount');
+            const indicator = document.getElementById('runningTaskIndicator');
+
+            if (showLoading) {
+                container.innerHTML = '<div class="loading">正在加载运行中任务...</div>';
+            }
+
+            try {
+                const response = await fetch('/api/task-monitor/running');
+                const data = await response.json();
+
+                lastUpdate.textContent = `上次更新: ${data.timestamp || new Date().toLocaleString()}`;
+
+                if (data.error) {
+                    container.innerHTML = `<div class="no-tasks"><p class="icon">⚠️</p><p>${data.error}</p></div>`;
+                    countDisplay.textContent = '';
+                    indicator.style.display = 'none';
+                    return;
+                }
+
+                const tasks = data.tasks || [];
+                countDisplay.textContent = `共 ${tasks.length} 个任务运行中`;
+
+                // 更新侧边栏指示器
+                if (tasks.length > 0) {
+                    indicator.style.display = 'inline-block';
+                } else {
+                    indicator.style.display = 'none';
+                }
+
+                if (tasks.length === 0) {
+                    container.innerHTML = `
+                        <div class="no-tasks">
+                            <p class="icon">😴</p>
+                            <p>当前没有运行中的任务</p>
+                            <p style="font-size: 0.85rem; margin-top: 8px;">所有任务都在休息中~</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                let html = '';
+                tasks.forEach(task => {
+                    const typeBadge = task.task_type === 'manual' ?
+                        '<span class="task-type-badge manual">手动</span>' :
+                        '<span class="task-type-badge scheduled">定时</span>';
+
+                    html += `
+                        <div class="running-task-card">
+                            <div class="running-task-header">
+                                <div class="running-task-title">
+                                    ${task.task_name}
+                                    ${typeBadge}
+                                </div>
+                                <span class="running-indicator">运行中</span>
+                            </div>
+                            <div class="running-task-meta">
+                                <div class="running-task-info">
+                                    <span class="label">📋 任务ID:</span>
+                                    <span class="value">${task.task_id}</span>
+                                </div>
+                                <div class="running-task-info">
+                                    <span class="label">🕐 开始时间:</span>
+                                    <span class="value">${task.start_time}</span>
+                                </div>
+                                <div class="running-task-info">
+                                    <span class="label">⏱️ 运行时长:</span>
+                                    <span class="value">${task.duration}</span>
+                                </div>
+                                ${task.pid ? `
+                                <div class="running-task-info">
+                                    <span class="label">🔢 进程ID:</span>
+                                    <span class="value">${task.pid}</span>
+                                </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `;
+                });
+
+                container.innerHTML = html;
+
+            } catch (error) {
+                console.error('Load running tasks error:', error);
+                if (showLoading) {
+                    container.innerHTML = `<div class="no-tasks"><p class="icon">❌</p><p>加载失败: ${error.message}</p></div>`;
+                }
+                countDisplay.textContent = '';
+            }
+        }
+
+        async function loadTaskHistory() {
+            const container = document.getElementById('taskHistoryContainer');
+            const listContainer = document.getElementById('taskHistoryList');
+
+            // 切换显示/隐藏
+            if (container.style.display === 'none') {
+                container.style.display = 'block';
+                listContainer.innerHTML = '<div class="loading">正在加载历史记录...</div>';
+
+                try {
+                    const response = await fetch('/api/task-monitor/history?limit=20');
+                    const data = await response.json();
+
+                    if (data.error) {
+                        listContainer.innerHTML = `<div class="no-tasks"><p>${data.error}</p></div>`;
+                        return;
+                    }
+
+                    const history = data.history || [];
+
+                    if (history.length === 0) {
+                        listContainer.innerHTML = `
+                            <div class="no-tasks">
+                                <p class="icon">📭</p>
+                                <p>暂无执行历史</p>
+                            </div>
+                        `;
+                        return;
+                    }
+
+                    let html = '';
+                    history.forEach(task => {
+                        const statusClass = task.status || 'unknown';
+                        const statusText = {
+                            'completed': '✅ 成功',
+                            'failed': '❌ 失败',
+                            'timeout': '⏱️ 超时',
+                            'error': '💥 错误',
+                            'running': '🔄 运行中'
+                        }[task.status] || task.status;
+
+                        const typeBadge = task.task_type === 'manual' ?
+                            '<span class="task-type-badge manual">手动</span>' :
+                            '<span class="task-type-badge scheduled">定时</span>';
+
+                        html += `
+                            <div class="history-task-card ${statusClass}">
+                                <div class="history-task-header">
+                                    <div class="history-task-title">
+                                        ${task.task_name}
+                                        ${typeBadge}
+                                    </div>
+                                    <span class="history-task-status ${statusClass}">${statusText}</span>
+                                </div>
+                                <div class="history-task-meta">
+                                    <span>📋 ${task.task_id}</span>
+                                    <span>🕐 ${task.start_time || '-'}</span>
+                                    <span>⏱️ ${task.duration || '-'}</span>
+                                    ${task.end_time ? `<span>🏁 ${task.end_time}</span>` : ''}
+                                </div>
+                                ${task.error ? `<div style="margin-top: 8px; color: var(--danger); font-size: 0.8rem;">❌ ${task.error.substring(0, 100)}${task.error.length > 100 ? '...' : ''}</div>` : ''}
+                            </div>
+                        `;
+                    });
+
+                    listContainer.innerHTML = html;
+
+                } catch (error) {
+                    console.error('Load task history error:', error);
+                    listContainer.innerHTML = `<div class="no-tasks"><p>加载失败: ${error.message}</p></div>`;
+                }
+            } else {
+                container.style.display = 'none';
+            }
+        }
+
+        function showTaskManager() {
+            currentSection = 'task';
+            closeMobileMenu();
+            stopRunningTasksAutoRefresh();
+
+            document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+            event.currentTarget?.classList.add('active');
+
+            document.getElementById('dataPanel').style.display = 'none';
+            document.getElementById('contentPanel').style.display = 'none';
+            document.getElementById('runningTasksPanel').classList.remove('active');
             document.getElementById('taskPanel').classList.add('active');
             document.getElementById('statusPanel').classList.remove('active');
 
@@ -799,12 +1246,14 @@
         function showSystemStatus() {
             currentSection = 'status';
             closeMobileMenu();
+            stopRunningTasksAutoRefresh();
 
             document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
             event.currentTarget?.classList.add('active');
 
             document.getElementById('dataPanel').style.display = 'none';
             document.getElementById('contentPanel').style.display = 'none';
+            document.getElementById('runningTasksPanel').classList.remove('active');
             document.getElementById('taskPanel').classList.remove('active');
             document.getElementById('statusPanel').classList.add('active');
 
@@ -819,17 +1268,26 @@
                 return;
             }
             container.innerHTML = '<div class="loading">正在加载任务...</div>';
-            
+
             try {
-                const response = await fetch('/api/scheduler/tasks');
-                const data = await response.json();
+                // 同时获取任务列表和运行中任务
+                const [tasksResponse, runningResponse] = await Promise.all([
+                    fetch('/api/scheduler/tasks'),
+                    fetch('/api/task-monitor/running').catch(() => ({ json: () => ({ tasks: [] }) }))
+                ]);
+
+                const data = await tasksResponse.json();
+                const runningData = await runningResponse.json();
                 console.log('Tasks API response:', data);
-                
+
+                // 获取运行中任务的ID集合
+                const runningTaskIds = new Set((runningData.tasks || []).map(t => t.task_id));
+
                 if (data.error) {
                     container.innerHTML = `<div class="task-empty"><p>❌ ${data.error}</p></div>`;
                     return;
                 }
-                
+
                 if (!data.tasks || data.tasks.length === 0) {
                     container.innerHTML = `
                         <div class="task-empty">
@@ -839,22 +1297,38 @@
                     `;
                     return;
                 }
-                
+
                 window.tasksData = data.tasks;
-                
+
                 let html = '<div class="task-grid">';
                 data.tasks.forEach(task => {
                     const scheduleText = getScheduleText(task.schedule);
-                    const statusClass = task.enabled ? 'running' : 'stopped';
-                    const statusText = task.enabled ? '已启用' : '已禁用';
+                    const isRunning = runningTaskIds.has(task.id);
+
+                    let statusClass, statusText;
+                    if (isRunning) {
+                        statusClass = 'running';
+                        statusText = '🔄 运行中';
+                    } else if (task.enabled) {
+                        statusClass = 'running';
+                        statusText = '✅ 已启用';
+                    } else {
+                        statusClass = 'stopped';
+                        statusText = '⏸️ 已禁用';
+                    }
+
                     const toggleText = task.enabled ? '⏸️ 禁用' : '▶️ 启用';
                     const toggleClass = task.enabled ? 'toggle' : 'run';
-                    
+
+                    // 运行中的任务添加特殊样式
+                    const cardStyle = isRunning ? 'style="border-color: var(--success); box-shadow: 0 0 15px rgba(16, 185, 129, 0.3);"' : '';
+                    const runningBadge = isRunning ? '<span style="color: var(--success); font-size: 0.8rem; margin-left: 8px;">● 正在执行</span>' : '';
+
                     html += `
-                        <div class="task-card">
+                        <div class="task-card" ${cardStyle}>
                             <div class="task-card-header">
                                 <div>
-                                    <div class="task-title">${task.name}</div>
+                                    <div class="task-title">${task.name}${runningBadge}</div>
                                     <div class="task-desc">${task.description || '暂无描述'}</div>
                                 </div>
                                 <span class="status-tag ${statusClass}">${statusText}</span>
@@ -862,9 +1336,9 @@
                             <div class="task-meta">
                                 <span class="task-schedule">${scheduleText}</span>
                                 <div class="task-actions">
-                                    <button class="btn-task run" onclick="runTask('${task.id}')" ${!task.enabled ? 'disabled style="opacity:0.5"' : ''}>▶️ 运行</button>
+                                    <button class="btn-task run" onclick="runTask('${task.id}')" ${!task.enabled || isRunning ? 'disabled style="opacity:0.5"' : ''}>${isRunning ? '🔄 执行中' : '▶️ 运行'}</button>
                                     <button class="btn-task" onclick="editTask('${task.id}')">✏️ 编辑</button>
-                                    <button class="btn-task ${toggleClass}" onclick="toggleTask('${task.id}')">${toggleText}</button>
+                                    <button class="btn-task ${toggleClass}" onclick="toggleTask('${task.id}')" ${isRunning ? 'disabled style="opacity:0.5"' : ''}>${toggleText}</button>
                                     <button class="btn-task" onclick="viewTaskLogs()">📋 日志</button>
                                 </div>
                             </div>
@@ -872,10 +1346,10 @@
                     `;
                 });
                 html += '</div>';
-                
+
                 container.innerHTML = html;
                 console.log('Tasks loaded successfully');
-                
+
             } catch (error) {
                 console.error('Load tasks error:', error);
                 container.innerHTML = `<div class="task-empty"><p>❌ 加载失败: ${error.message}</p></div>`;
@@ -1277,6 +1751,28 @@
             const type = this.value;
             document.getElementById('scheduleTimeGroup').style.display = type === 'daily' ? 'block' : 'none';
             document.getElementById('scheduleMinutesGroup').style.display = type === 'interval' ? 'block' : 'none';
+        });
+
+        // 页面加载时检查运行中任务（更新侧边栏指示器）
+        async function checkRunningTasksOnLoad() {
+            try {
+                const response = await fetch('/api/task-monitor/summary');
+                const data = await response.json();
+                const indicator = document.getElementById('runningTaskIndicator');
+                
+                if (data.running_count > 0) {
+                    indicator.style.display = 'inline-block';
+                } else {
+                    indicator.style.display = 'none';
+                }
+            } catch (error) {
+                console.log('无法获取任务监控摘要:', error);
+            }
+        }
+
+        // 页面加载完成后执行
+        document.addEventListener('DOMContentLoaded', function() {
+            checkRunningTasksOnLoad();
         });
     </script>
 </body>

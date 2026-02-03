@@ -7,13 +7,25 @@ import os
 import json
 import subprocess
 import platform
+import sys
 from datetime import datetime
 from flask import Flask, render_template, jsonify, send_from_directory, request
+
+# 添加项目根目录到 Python 路径
+PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, PROJECT_DIR)
+
+# 导入任务监控器
+try:
+    from scheduler.task_monitor import task_monitor
+    TASK_MONITOR_AVAILABLE = True
+except ImportError:
+    TASK_MONITOR_AVAILABLE = False
+    task_monitor = None
 
 app = Flask(__name__)
 
 # 加载重启密码
-PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ENV_FILE = os.path.join(PROJECT_DIR, ".env")
 RESTART_PASSWORD = None
 
@@ -494,6 +506,7 @@ def api_scheduler_run(task_id):
     
     try:
         import subprocess
+        import threading
         work_dir = task.get("working_directory", PROJECT_DIR)
         timeout = task.get("timeout", 300)
         
@@ -501,35 +514,94 @@ def api_scheduler_run(task_id):
         env['PYTHONIOENCODING'] = 'utf-8'
         env['LANG'] = 'en_US.UTF-8'
         
-        result = subprocess.run(
+        # 记录任务到监控器（手动运行）
+        if TASK_MONITOR_AVAILABLE:
+            task_monitor.start_task(
+                task_id=task_id,
+                task_name=task.get('name', ''),
+                task_type="manual"
+            )
+        
+        # 使用 Popen 启动进程以便获取 PID
+        process = subprocess.Popen(
             task.get("command"),
             shell=True,
             cwd=work_dir,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=timeout,
             env=env
         )
         
-        if result.returncode == 0:
-            return jsonify({
-                "success": True,
-                "message": f"任务 '{task.get('name')}' 执行成功",
-                "output": result.stdout[:500] if result.stdout else ""
-            })
-        else:
+        # 更新 PID 到监控器
+        if TASK_MONITOR_AVAILABLE:
+            task_monitor.update_task_pid(task_id, process.pid)
+        
+        try:
+            stdout, stderr = process.communicate(timeout=timeout)
+            
+            if process.returncode == 0:
+                # 记录任务完成
+                if TASK_MONITOR_AVAILABLE:
+                    task_monitor.end_task(
+                        task_id=task_id,
+                        status="completed",
+                        output=stdout,
+                        error=""
+                    )
+                return jsonify({
+                    "success": True,
+                    "message": f"任务 '{task.get('name')}' 执行成功",
+                    "output": stdout[:500] if stdout else "",
+                    "pid": process.pid
+                })
+            else:
+                # 记录任务失败
+                if TASK_MONITOR_AVAILABLE:
+                    task_monitor.end_task(
+                        task_id=task_id,
+                        status="failed",
+                        output=stdout,
+                        error=stderr
+                    )
+                return jsonify({
+                    "success": False,
+                    "message": f"任务执行失败",
+                    "error": stderr[:500] if stderr else "",
+                    "pid": process.pid
+                })
+        
+        except subprocess.TimeoutExpired:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+            
+            # 记录任务超时
+            if TASK_MONITOR_AVAILABLE:
+                task_monitor.end_task(
+                    task_id=task_id,
+                    status="timeout",
+                    output="",
+                    error=f"任务执行超时（{timeout}秒）"
+                )
             return jsonify({
                 "success": False,
-                "message": f"任务执行失败",
-                "error": result.stderr[:500] if result.stderr else ""
+                "message": f"任务执行超时（{timeout}秒）",
+                "pid": process.pid
             })
     
-    except subprocess.TimeoutExpired:
-        return jsonify({
-            "success": False,
-            "message": f"任务执行超时（{timeout}秒）"
-        })
     except Exception as e:
+        # 记录任务异常
+        if TASK_MONITOR_AVAILABLE:
+            task_monitor.end_task(
+                task_id=task_id,
+                status="error",
+                output="",
+                error=str(e)
+            )
         return jsonify({
             "success": False,
             "message": f"执行出错: {str(e)}"
@@ -642,6 +714,101 @@ def api_scheduler_logs():
             "logs": "",
             "message": f"读取日志失败: {str(e)}"
         })
+
+
+# ==================== 任务监控 API ====================
+
+@app.route("/api/task-monitor/running")
+def api_task_monitor_running():
+    """获取所有正在运行的任务"""
+    if not TASK_MONITOR_AVAILABLE:
+        return jsonify({
+            "error": "任务监控模块不可用",
+            "tasks": []
+        }), 503
+    
+    try:
+        running_tasks = task_monitor.get_running_tasks()
+        return jsonify({
+            "tasks": running_tasks,
+            "count": len(running_tasks),
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        })
+    except Exception as e:
+        return jsonify({
+            "error": f"获取运行中任务失败: {str(e)}",
+            "tasks": []
+        }), 500
+
+
+@app.route("/api/task-monitor/history")
+def api_task_monitor_history():
+    """获取任务执行历史"""
+    if not TASK_MONITOR_AVAILABLE:
+        return jsonify({
+            "error": "任务监控模块不可用",
+            "history": []
+        }), 503
+    
+    try:
+        limit = request.args.get("limit", 20, type=int)
+        history = task_monitor.get_task_history(limit=limit)
+        return jsonify({
+            "history": history,
+            "count": len(history),
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        })
+    except Exception as e:
+        return jsonify({
+            "error": f"获取任务历史失败: {str(e)}",
+            "history": []
+        }), 500
+
+
+@app.route("/api/task-monitor/summary")
+def api_task_monitor_summary():
+    """获取任务监控摘要"""
+    if not TASK_MONITOR_AVAILABLE:
+        return jsonify({
+            "error": "任务监控模块不可用",
+            "running_count": 0,
+            "history_count": 0
+        }), 503
+    
+    try:
+        summary = task_monitor.get_summary()
+        return jsonify(summary)
+    except Exception as e:
+        return jsonify({
+            "error": f"获取任务摘要失败: {str(e)}",
+            "running_count": 0,
+            "history_count": 0
+        }), 500
+
+
+@app.route("/api/task-monitor/status/<task_id>")
+def api_task_monitor_status(task_id):
+    """获取指定任务的运行状态"""
+    if not TASK_MONITOR_AVAILABLE:
+        return jsonify({
+            "error": "任务监控模块不可用",
+            "task_id": task_id,
+            "is_running": False
+        }), 503
+    
+    try:
+        is_running = task_monitor.is_task_running(task_id)
+        return jsonify({
+            "task_id": task_id,
+            "is_running": is_running,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        })
+    except Exception as e:
+        return jsonify({
+            "error": f"获取任务状态失败: {str(e)}",
+            "task_id": task_id,
+            "is_running": False
+        }), 500
 
 
 if __name__ == "__main__":
