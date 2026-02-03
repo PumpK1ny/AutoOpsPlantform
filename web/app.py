@@ -352,10 +352,8 @@ def api_restart_service(service_id):
     重启指定服务
     需要 POST 请求，并包含密码验证
     """
-    # 获取请求数据
     data = request.get_json(silent=True) or {}
 
-    # 安全检查：密码验证
     provided_password = data.get("password", "")
     if provided_password != RESTART_PASSWORD:
         return jsonify({
@@ -371,6 +369,279 @@ def api_restart_service(service_id):
         "service": service_id,
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     })
+
+
+SCHEDULER_CONFIG_PATH = os.path.join(PROJECT_DIR, "scheduler", "config.json")
+SCHEDULER_LOG_PATH = os.path.join(PROJECT_DIR, "scheduler", "scheduler.log")
+
+
+def load_scheduler_config():
+    """加载调度器配置"""
+    if not os.path.exists(SCHEDULER_CONFIG_PATH):
+        return None
+    try:
+        with open(SCHEDULER_CONFIG_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"加载调度器配置失败: {e}")
+        return None
+
+
+def save_scheduler_config(config):
+    """保存调度器配置"""
+    try:
+        with open(SCHEDULER_CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        print(f"保存调度器配置失败: {e}")
+        return False
+
+
+def get_task_status_from_log(task_id):
+    """从日志文件获取任务状态"""
+    if not os.path.exists(SCHEDULER_LOG_PATH):
+        return None
+    
+    try:
+        with open(SCHEDULER_LOG_PATH, "r", encoding="utf-8", errors="ignore") as f:
+            lines = f.readlines()
+        
+        last_run = None
+        last_status = None
+        task_pattern = f"任务: {task_id}"
+        
+        for line in reversed(lines):
+            if task_pattern in line or f"'{task_id}'" in line:
+                if "最后运行" in line:
+                    import re
+                    match = re.search(r"最后运行: ([\d\- :]+)", line)
+                    if match:
+                        last_run = match.group(1)
+                if "状态:" in line:
+                    import re
+                    match = re.search(r"状态: (\w+)", line)
+                    if match:
+                        last_status = match.group(1)
+                if last_run or last_status:
+                    break
+        
+        return {
+            "last_run": last_run,
+            "last_status": last_status
+        }
+    except Exception as e:
+        return None
+
+
+@app.route("/api/scheduler/tasks")
+def api_scheduler_tasks():
+    """获取所有调度任务"""
+    config = load_scheduler_config()
+    if not config:
+        return jsonify({"error": "无法加载调度器配置"}), 500
+    
+    tasks = []
+    for task_dict in config.get("tasks", []):
+        task_status = get_task_status_from_log(task_dict.get("id", ""))
+        tasks.append({
+            "id": task_dict.get("id"),
+            "name": task_dict.get("name", ""),
+            "description": task_dict.get("description", ""),
+            "command": task_dict.get("command", ""),
+            "schedule": task_dict.get("schedule", {}),
+            "enabled": task_dict.get("enabled", True),
+            "timeout": task_dict.get("timeout", 300),
+            "working_directory": task_dict.get("working_directory", "."),
+            "last_run": task_status.get("last_run") if task_status else None,
+            "last_status": task_status.get("last_status") if task_status else None
+        })
+    
+    return jsonify({
+        "tasks": tasks,
+        "settings": config.get("settings", {}),
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    })
+
+
+@app.route("/api/scheduler/run/<task_id>", methods=["POST"])
+def api_scheduler_run(task_id):
+    """手动运行指定任务"""
+    data = request.get_json(silent=True) or {}
+    password = data.get("password", "")
+    
+    if password != RESTART_PASSWORD:
+        return jsonify({
+            "success": False,
+            "message": "密码错误"
+        }), 403
+    
+    config = load_scheduler_config()
+    if not config:
+        return jsonify({"success": False, "message": "无法加载调度器配置"}), 500
+    
+    task = None
+    for task_dict in config.get("tasks", []):
+        if task_dict.get("id") == task_id:
+            task = task_dict
+            break
+    
+    if not task:
+        return jsonify({"success": False, "message": f"任务 {task_id} 不存在"}), 404
+    
+    if not task.get("enabled", True):
+        return jsonify({"success": False, "message": "任务已禁用，无法运行"}), 400
+    
+    try:
+        import subprocess
+        work_dir = task.get("working_directory", PROJECT_DIR)
+        timeout = task.get("timeout", 300)
+        
+        env = os.environ.copy()
+        env['PYTHONIOENCODING'] = 'utf-8'
+        env['LANG'] = 'en_US.UTF-8'
+        
+        result = subprocess.run(
+            task.get("command"),
+            shell=True,
+            cwd=work_dir,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=env
+        )
+        
+        if result.returncode == 0:
+            return jsonify({
+                "success": True,
+                "message": f"任务 '{task.get('name')}' 执行成功",
+                "output": result.stdout[:500] if result.stdout else ""
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "message": f"任务执行失败",
+                "error": result.stderr[:500] if result.stderr else ""
+            })
+    
+    except subprocess.TimeoutExpired:
+        return jsonify({
+            "success": False,
+            "message": f"任务执行超时（{timeout}秒）"
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"执行出错: {str(e)}"
+        })
+
+
+@app.route("/api/scheduler/toggle/<task_id>", methods=["POST"])
+def api_scheduler_toggle(task_id):
+    """启用/禁用任务"""
+    data = request.get_json(silent=True) or {}
+    password = data.get("password", "")
+    
+    if password != RESTART_PASSWORD:
+        return jsonify({
+            "success": False,
+            "message": "密码错误"
+        }), 403
+    
+    config = load_scheduler_config()
+    if not config:
+        return jsonify({"success": False, "message": "无法加载调度器配置"}), 500
+    
+    task_found = False
+    new_state = False
+    for task_dict in config.get("tasks", []):
+        if task_dict.get("id") == task_id:
+            task_found = True
+            current_state = task_dict.get("enabled", True)
+            task_dict["enabled"] = not current_state
+            new_state = not current_state
+            break
+    
+    if not task_found:
+        return jsonify({"success": False, "message": f"任务 {task_id} 不存在"}), 404
+    
+    if save_scheduler_config(config):
+        return jsonify({
+            "success": True,
+            "message": f"任务已{'启用' if new_state else '禁用'}",
+            "enabled": new_state
+        })
+    else:
+        return jsonify({"success": False, "message": "保存配置失败"}), 500
+
+
+@app.route("/api/scheduler/update", methods=["POST"])
+def api_scheduler_update():
+    """更新任务配置"""
+    data = request.get_json(silent=True) or {}
+    password = data.get("password", "")
+    task_id = data.get("task_id")
+    task_config = data.get("config", {})
+    
+    if password != RESTART_PASSWORD:
+        return jsonify({
+            "success": False,
+            "message": "密码错误"
+        }), 403
+    
+    if not task_id:
+        return jsonify({"success": False, "message": "缺少任务ID"}), 400
+    
+    config = load_scheduler_config()
+    if not config:
+        return jsonify({"success": False, "message": "无法加载调度器配置"}), 500
+    
+    task_found = False
+    for task_dict in config.get("tasks", []):
+        if task_dict.get("id") == task_id:
+            task_found = True
+            for key, value in task_config.items():
+                if key not in ["id"]:
+                    task_dict[key] = value
+            break
+    
+    if not task_found:
+        return jsonify({"success": False, "message": f"任务 {task_id} 不存在"}), 404
+    
+    if save_scheduler_config(config):
+        return jsonify({
+            "success": True,
+            "message": "任务配置已更新"
+        })
+    else:
+        return jsonify({"success": False, "message": "保存配置失败"}), 500
+
+
+@app.route("/api/scheduler/logs")
+def api_scheduler_logs():
+    """获取调度器日志"""
+    lines = request.args.get("lines", 100, type=int)
+    
+    if not os.path.exists(SCHEDULER_LOG_PATH):
+        return jsonify({
+            "logs": "",
+            "message": "日志文件不存在"
+        })
+    
+    try:
+        with open(SCHEDULER_LOG_PATH, "r", encoding="utf-8", errors="ignore") as f:
+            all_lines = f.readlines()
+            log_content = "".join(all_lines[-lines:])
+        
+        return jsonify({
+            "logs": log_content,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        })
+    except Exception as e:
+        return jsonify({
+            "logs": "",
+            "message": f"读取日志失败: {str(e)}"
+        })
 
 
 if __name__ == "__main__":

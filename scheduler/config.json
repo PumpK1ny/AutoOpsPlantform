@@ -4,13 +4,13 @@
       "id": "news_summary",
       "name": "每日新闻摘要",
       "description": "每天晚上运行新闻摘要工作流",
-      "command": "D:\\PythonProject\\auto_fund\\.venv\\Scripts\\python.exe workflow/news_summry/run.py",
+      "command": "./venv/Scripts/python.exe workflow/news_summry/run.py",
       "schedule": {
         "type": "daily",
         "time": "00:00"
       },
       "enabled": true,
-      "working_directory": "d:\\PythonProject\\auto_fund",
+      "working_directory": "./",
       "timeout": 2000
     }
   ],

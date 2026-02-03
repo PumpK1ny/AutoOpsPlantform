@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://img.shields.io/badge/Eros-FF6B9D?style=for-the-badge&logo=heart&logoColor=white" alt="Eros" />
+<img src="pic/logo_b.jpeg" alt="Eros Logo" width="250" />
 
 # 🤖 Eros - 智能基金监控系统
 
@@ -93,7 +93,7 @@
 
 ```bash
 git clone <repository-url>
-cd eros
+cd auto_fund
 ```
 
 ### 2️⃣ 创建虚拟环境
@@ -228,10 +228,11 @@ SERVICE_RESTART_PASSWORD=your_password
 ## 🗺️ 项目结构
 
 ```
-eros/
+auto_fund/
 ├── AI/                    # AI 核心模块
 ├── DataCollector/         # 数据收集
 ├── message_push/QQ/       # QQ 机器人
+├── pic/                   # 项目图片资源
 ├── scheduler/             # 任务调度
 ├── web/                   # Web 应用
 ├── workflow/              # 工作流
@@ -250,14 +251,14 @@ eros/
 
 ### 🌟 Star 历史
 
-[![Star History Chart](https://api.star-history.com/svg?repos=yourname/eros&type=Date)](https://star-history.com/#yourname/eros&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=yourname/auto_fund&type=Date)](https://star-history.com/#yourname/auto_fund&Date)
 
 ---
 
 **Made with ❤️ by Eros Team**
 
 <p align="center">
-  <a href="https://github.com/yourname/eros">
+  <a href="https://github.com/yourname/auto_fund">
     <img src="https://img.shields.io/badge/GitHub-100000?style=for-the-badge&logo=github&logoColor=white" />
   </a>
 </p>

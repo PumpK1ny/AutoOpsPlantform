@@ -3,45 +3,595 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>数据分析结果展示</title>
+    <title>Eros - 数据分析结果展示</title>
+    <link rel="shortcut icon" type="image/png" href="{{ url_for('serve_static', path='icon.png') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('serve_static', path='icon.png') }}">
     <link rel="stylesheet" href="{{ url_for('serve_static', path='css/style.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js"></script>
+    <style>
+        .nav-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 12px;
+            margin-bottom: 6px;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            transition: all var(--transition-normal);
+            border: 1px solid transparent;
+            background: transparent;
+        }
+
+        .nav-item:hover {
+            background: var(--bg-glass-hover);
+            border-color: var(--border-glow);
+            transform: translateX(4px);
+        }
+
+        .nav-item.active {
+            background: var(--primary-color);
+            border-color: var(--primary-color);
+            box-shadow: var(--shadow-glow);
+        }
+
+        .nav-item.active .nav-name {
+            color: white;
+        }
+
+        .nav-item.active .nav-icon {
+            transform: scale(1.1);
+        }
+
+        .nav-icon {
+            font-size: 1.3rem;
+            margin-right: 12px;
+            transition: transform var(--transition-fast);
+        }
+
+        .nav-name {
+            flex: 1;
+            font-size: 0.95rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            transition: color var(--transition-normal);
+        }
+
+        .section-divider {
+            height: 1px;
+            background: var(--border-color);
+            margin: 16px 0;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-left: 8px;
+        }
+
+        .status-indicator.online {
+            background: var(--success);
+            box-shadow: 0 0 8px var(--success);
+        }
+
+        .status-indicator.offline {
+            background: var(--danger);
+        }
+
+        .content-section {
+            display: none;
+        }
+
+        .content-section.active {
+            display: block;
+        }
+
+        .system-status-grid {
+            display: grid;
+            gap: 20px;
+        }
+
+        .service-card {
+            background: var(--bg-glass);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            transition: all var(--transition-normal);
+        }
+
+        .service-card:hover {
+            border-color: var(--border-glow);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .service-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .service-card-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .service-card-desc {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .status-tags {
+            display: flex;
+            gap: 8px;
+        }
+
+        .status-tag {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .status-tag.running {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--success);
+            border: 1px solid var(--success);
+        }
+
+        .status-tag.stopped {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--danger);
+            border: 1px solid var(--danger);
+        }
+
+        .status-tag.enabled {
+            background: rgba(59, 130, 246, 0.2);
+            color: var(--info);
+            border: 1px solid var(--info);
+        }
+
+        .status-tag.disabled {
+            background: rgba(156, 163, 175, 0.2);
+            color: var(--text-muted);
+            border: 1px solid var(--border-color);
+        }
+
+        .service-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .btn-action {
+            padding: 6px 12px;
+            border-radius: var(--radius-sm);
+            font-size: 0.8rem;
+            cursor: pointer;
+            border: 1px solid var(--border-color);
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            transition: all var(--transition-fast);
+        }
+
+        .btn-action:hover {
+            border-color: var(--primary-color);
+            color: var(--text-primary);
+        }
+
+        .btn-action.primary {
+            background: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+
+        .btn-action.primary:hover {
+            background: var(--primary-hover);
+        }
+
+        .refresh-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            background: var(--bg-glass);
+            border-radius: var(--radius-md);
+            margin-bottom: 16px;
+        }
+
+        .refresh-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .last-update {
+            color: var(--success);
+            font-weight: 500;
+        }
+
+        .task-grid {
+            display: grid;
+            gap: 16px;
+        }
+
+        .task-card {
+            background: var(--bg-glass);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            transition: all var(--transition-normal);
+        }
+
+        .task-card:hover {
+            border-color: var(--border-glow);
+        }
+
+        .task-card-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .task-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+
+        .task-desc {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .task-meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 16px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .task-schedule {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.8rem;
+            color: var(--text-accent);
+            background: var(--bg-tertiary);
+            padding: 4px 12px;
+            border-radius: var(--radius-sm);
+        }
+
+        .task-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-task {
+            padding: 6px 12px;
+            border-radius: var(--radius-sm);
+            font-size: 0.8rem;
+            cursor: pointer;
+            border: 1px solid var(--border-color);
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            transition: all var(--transition-fast);
+        }
+
+        .btn-task:hover {
+            border-color: var(--primary-color);
+            color: var(--text-primary);
+        }
+
+        .btn-task.run {
+            background: var(--success);
+            color: white;
+            border-color: var(--success);
+        }
+
+        .btn-task.run:hover {
+            background: #059669;
+        }
+
+        .btn-task.toggle {
+            background: var(--warning);
+            color: white;
+            border-color: var(--warning);
+        }
+
+        .btn-task.toggle:hover {
+            background: #d97706;
+        }
+
+        .task-empty {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+
+        .task-empty .icon {
+            font-size: 3rem;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--bg-secondary);
+            border-radius: var(--radius-lg);
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: var(--shadow-lg);
+            border: 1px solid var(--border-color);
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .modal-header h3 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .modal-close {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: none;
+            background: var(--bg-tertiary);
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all var(--transition-fast);
+        }
+
+        .modal-close:hover {
+            background: var(--danger);
+            color: white;
+        }
+
+        .modal-body {
+            padding: 16px 20px;
+            overflow-y: auto;
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            padding: 16px 24px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .btn-modal {
+            padding: 8px 14px;
+            border-radius: var(--radius-md);
+            font-size: 0.85rem;
+            cursor: pointer;
+            border: 1px solid var(--border-color);
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            transition: all var(--transition-fast);
+        }
+
+        .btn-modal:hover {
+            border-color: var(--primary-color);
+            color: var(--text-primary);
+        }
+
+        .btn-modal.primary {
+            background: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+
+        .btn-modal.primary:hover {
+            background: var(--primary-hover);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            transition: all var(--transition-fast);
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.2);
+        }
+
+        .form-input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .form-textarea {
+            min-height: 100px;
+            resize: vertical;
+            font-family: inherit;
+        }
+
+        .form-select {
+            cursor: pointer;
+        }
+
+        .password-input-group {
+            display: flex;
+            align-items: center;
+        }
+
+        .password-input-group .form-input {
+            border-radius: var(--radius-md) 0 0 var(--radius-md);
+            border-right: none;
+            flex: 1;
+        }
+
+        .password-toggle {
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 0 var(--radius-md) var(--radius-md) 0;
+            background: var(--bg-tertiary);
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .password-toggle:hover {
+            background: var(--bg-glass-hover);
+        }
+
+        .log-viewer {
+            background: #1e1e1e;
+            border-radius: var(--radius-md);
+            padding: 16px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.85rem;
+            line-height: 1.6;
+            color: #d4d4d4;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .log-line {
+            padding: 2px 0;
+        }
+
+        .log-line.error { color: #f48771; }
+        .log-line.warning { color: #dcdcaa; }
+        .log-line.success { color: #4ec9b0; }
+        .log-line.info { color: #4fc1ff; }
+
+        .log-empty {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
+        }
+
+        .log-modal-fullscreen {
+            max-width: 90vw;
+            max-height: 90vh;
+            width: auto;
+        }
+
+        .log-modal-fullscreen .modal {
+            width: 95vw;
+            max-width: 1400px;
+        }
+    </style>
 </head>
 <body>
+    <button class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleMobileMenu()">
+        <span></span>
+        <span></span>
+        <span></span>
+    </button>
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeMobileMenu()"></div>
+
     <div class="app-container">
-        <!-- 侧边栏 -->
-        <aside class="sidebar">
+        <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <h1>📊 数据分析</h1>
-                <p class="subtitle">结果展示系统</p>
+                <h1><img src="{{ url_for('serve_static', path='icon.png') }}" alt="Eros" style="width: 28px; height: 28px; vertical-align: middle; margin-right: 8px; border-radius: 4px;">Eros</h1>
+                <p class="subtitle">智能基金监控系统</p>
             </div>
             
             <nav class="folder-nav">
-                <h3>📁 数据文件夹</h3>
+                <h3>📁 数据查看</h3>
                 <ul id="folderList">
                     {% for folder in folders %}
-                    <li class="folder-item" data-folder="{{ folder.name }}">
-                        <span class="folder-icon">📂</span>
-                        <span class="folder-name">{{ folder.display_name }}</span>
+                    <li class="nav-item" data-folder="{{ folder.name }}" onclick="showDataFolder('{{ folder.name }}')">
+                        <span class="nav-icon">📂</span>
+                        <span class="nav-name">{{ folder.display_name }}</span>
                         <span class="folder-count" id="count-{{ folder.name }}"></span>
                     </li>
                     {% endfor %}
+                </ul>
+
+                <div class="section-divider"></div>
+
+                <h3>⚙️ 系统管理</h3>
+                <ul>
+                    <li class="nav-item" onclick="showTaskManager()">
+                        <span class="nav-icon">⏰</span>
+                        <span class="nav-name">任务调度</span>
+                    </li>
+                    <li class="nav-item" onclick="showSystemStatus()">
+                        <span class="nav-icon">🖥️</span>
+                        <span class="nav-name">系统状态</span>
+                    </li>
                 </ul>
             </nav>
 
             <div class="sidebar-footer">
                 <p>📅 {{ now.strftime('%Y年%m月%d日') }}</p>
-                <p><a href="/system" style="color: #1890ff; text-decoration: none;">🖥️ 系统状态</a></p>
             </div>
         </aside>
 
-        <!-- 主内容区 -->
         <main class="main-content">
-            <!-- 文件列表 -->
-            <div class="file-panel" id="filePanel">
+            <div class="content-panel" id="dataPanel">
                 <div class="panel-header">
                     <h2 id="currentFolderName">📁 选择文件夹</h2>
                     <span class="file-count" id="fileCount">共 0 个文件</span>
@@ -53,7 +603,6 @@
                 </div>
             </div>
 
-            <!-- 内容展示区 -->
             <div class="content-panel" id="contentPanel">
                 <div class="panel-header">
                     <h2 id="currentFileName">📄 选择文件</h2>
@@ -70,9 +619,665 @@
                     </div>
                 </div>
             </div>
+
+            <div class="content-panel content-section" id="taskPanel">
+                <div class="panel-header">
+                    <h2>⏰ 任务调度管理</h2>
+                    <button class="btn btn-refresh" onclick="loadTasks()">🔄 刷新</button>
+                </div>
+                <div class="content-wrapper">
+                    <div class="content-viewer">
+                        <div id="taskListContainer">
+                            <div class="loading">正在加载任务...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="content-panel content-section" id="statusPanel">
+                <div class="panel-header">
+                    <h2>🖥️ 系统状态</h2>
+                    <button class="btn btn-refresh" onclick="loadSystemStatus()">🔄 刷新</button>
+                </div>
+                <div class="content-wrapper">
+                    <div class="content-viewer">
+                        <div class="refresh-bar">
+                            <div class="refresh-info">
+                                <span>📊</span>
+                                <span id="statusLastUpdate">正在加载...</span>
+                            </div>
+                        </div>
+                        <div class="system-status-grid" id="servicesContainer">
+                            <div class="loading">正在加载服务状态...</div>
+                        </div>
+                        <div id="platformInfo" style="text-align: center; padding: 20px; color: var(--text-muted); font-size: 0.85rem;"></div>
+                    </div>
+                </div>
+            </div>
         </main>
     </div>
 
+    <div class="modal-overlay" id="passwordModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="passwordModalTitle">🔐 输入密码</h3>
+                <button class="modal-close" onclick="closePasswordModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">操作密码</label>
+                    <div class="password-input-group">
+                        <input type="password" class="form-input" id="passwordInput" placeholder="请输入操作密码">
+                        <button type="button" class="password-toggle" onclick="togglePasswordVisibility()">
+                            <span id="passwordToggleIcon">👁️</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal" onclick="closePasswordModal()">取消</button>
+                <button class="btn-modal primary" id="passwordConfirmBtn" onclick="confirmPasswordAction()">确认</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="editModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>✏️ 编辑任务</h3>
+                <button class="modal-close" onclick="closeEditModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editTaskId">
+                <div class="form-group">
+                    <label class="form-label">任务名称</label>
+                    <input type="text" class="form-input" id="editTaskName" placeholder="任务名称">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">描述</label>
+                    <textarea class="form-input form-textarea" id="editTaskDesc" placeholder="任务描述"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">执行命令</label>
+                    <textarea class="form-input form-textarea" id="editTaskCommand" placeholder="执行的命令"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">调度类型</label>
+                    <select class="form-input form-select" id="editScheduleType">
+                        <option value="daily">每日</option>
+                        <option value="interval">间隔</option>
+                        <option value="cron">Cron 表达式</option>
+                    </select>
+                </div>
+                <div class="form-group" id="scheduleTimeGroup">
+                    <label class="form-label">执行时间 (每日时填 HH:MM)</label>
+                    <input type="text" class="form-input" id="editScheduleTime" placeholder="00:00">
+                </div>
+                <div class="form-group" id="scheduleMinutesGroup" style="display: none;">
+                    <label class="form-label">间隔分钟数</label>
+                    <input type="number" class="form-input" id="editScheduleMinutes" placeholder="60">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">超时时间 (秒)</label>
+                    <input type="number" class="form-input" id="editTaskTimeout" placeholder="300">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal" onclick="closeEditModal()">取消</button>
+                <button class="btn-modal primary" onclick="saveTaskConfig()">保存配置</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="logsModal">
+        <div class="modal log-modal-fullscreen">
+            <div class="modal-header">
+                <h3 id="logsModalTitle">📋 任务日志</h3>
+                <button class="modal-close" onclick="closeLogsModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="log-viewer" id="taskLogsContent">正在加载日志...</div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal" onclick="closeLogsModal()">关闭</button>
+                <button class="btn-modal primary" onclick="loadSchedulerLogs()">🔄 刷新</button>
+            </div>
+        </div>
+    </div>
+
     <script src="{{ url_for('serve_static', path='js/app.js') }}"></script>
+    <script>
+        let currentPasswordAction = null;
+        let currentTaskId = null;
+        let currentSection = 'data';
+
+        function toggleMobileMenu() {
+            const btn = document.getElementById('mobileMenuBtn');
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            
+            btn.classList.toggle('active');
+            sidebar.classList.toggle('mobile-open');
+            overlay.classList.toggle('active');
+        }
+
+        function closeMobileMenu() {
+            document.getElementById('mobileMenuBtn').classList.remove('active');
+            document.getElementById('sidebar').classList.remove('mobile-open');
+            document.getElementById('sidebarOverlay').classList.remove('active');
+        }
+
+        function showDataFolder(folderName) {
+            currentSection = 'data';
+            closeMobileMenu();
+
+            document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+            document.querySelector(`.nav-item[data-folder="${folderName}"]`)?.classList.add('active');
+
+            document.querySelectorAll('.content-section').forEach(panel => panel.classList.remove('active'));
+            document.getElementById('dataPanel').style.display = 'flex';
+            document.getElementById('contentPanel').style.display = 'flex';
+
+            selectFolder(folderName);
+        }
+
+        function showTaskManager() {
+            currentSection = 'task';
+            closeMobileMenu();
+
+            document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+            event.currentTarget?.classList.add('active');
+
+            document.getElementById('dataPanel').style.display = 'none';
+            document.getElementById('contentPanel').style.display = 'none';
+            document.getElementById('taskPanel').classList.add('active');
+            document.getElementById('statusPanel').classList.remove('active');
+
+            loadTasks();
+        }
+
+        function showSystemStatus() {
+            currentSection = 'status';
+            closeMobileMenu();
+
+            document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+            event.currentTarget?.classList.add('active');
+
+            document.getElementById('dataPanel').style.display = 'none';
+            document.getElementById('contentPanel').style.display = 'none';
+            document.getElementById('taskPanel').classList.remove('active');
+            document.getElementById('statusPanel').classList.add('active');
+
+            loadSystemStatus();
+        }
+
+        async function loadTasks() {
+            console.log('loadTasks called');
+            const container = document.getElementById('taskListContainer');
+            if (!container) {
+                console.error('taskListContainer not found');
+                return;
+            }
+            container.innerHTML = '<div class="loading">正在加载任务...</div>';
+            
+            try {
+                const response = await fetch('/api/scheduler/tasks');
+                const data = await response.json();
+                console.log('Tasks API response:', data);
+                
+                if (data.error) {
+                    container.innerHTML = `<div class="task-empty"><p>❌ ${data.error}</p></div>`;
+                    return;
+                }
+                
+                if (!data.tasks || data.tasks.length === 0) {
+                    container.innerHTML = `
+                        <div class="task-empty">
+                            <p class="icon">📋</p>
+                            <p>暂无任务配置</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                window.tasksData = data.tasks;
+                
+                let html = '<div class="task-grid">';
+                data.tasks.forEach(task => {
+                    const scheduleText = getScheduleText(task.schedule);
+                    const statusClass = task.enabled ? 'running' : 'stopped';
+                    const statusText = task.enabled ? '已启用' : '已禁用';
+                    const toggleText = task.enabled ? '⏸️ 禁用' : '▶️ 启用';
+                    const toggleClass = task.enabled ? 'toggle' : 'run';
+                    
+                    html += `
+                        <div class="task-card">
+                            <div class="task-card-header">
+                                <div>
+                                    <div class="task-title">${task.name}</div>
+                                    <div class="task-desc">${task.description || '暂无描述'}</div>
+                                </div>
+                                <span class="status-tag ${statusClass}">${statusText}</span>
+                            </div>
+                            <div class="task-meta">
+                                <span class="task-schedule">${scheduleText}</span>
+                                <div class="task-actions">
+                                    <button class="btn-task run" onclick="runTask('${task.id}')" ${!task.enabled ? 'disabled style="opacity:0.5"' : ''}>▶️ 运行</button>
+                                    <button class="btn-task" onclick="editTask('${task.id}')">✏️ 编辑</button>
+                                    <button class="btn-task ${toggleClass}" onclick="toggleTask('${task.id}')">${toggleText}</button>
+                                    <button class="btn-task" onclick="viewTaskLogs()">📋 日志</button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                
+                container.innerHTML = html;
+                console.log('Tasks loaded successfully');
+                
+            } catch (error) {
+                console.error('Load tasks error:', error);
+                container.innerHTML = `<div class="task-empty"><p>❌ 加载失败: ${error.message}</p></div>`;
+            }
+        }
+
+        function getScheduleText(schedule) {
+            if (!schedule) return '未配置';
+            const type = schedule.type;
+            if (type === 'daily') {
+                return `📅 每天 ${schedule.time || '00:00'}`;
+            } else if (type === 'interval') {
+                return `🔄 每 ${schedule.minutes || 60} 分钟`;
+            } else if (type === 'cron') {
+                return `⏰ ${schedule.expression || ''}`;
+            }
+            return type || '未配置';
+        }
+
+        async function loadSystemStatus() {
+            const container = document.getElementById('servicesContainer');
+            const lastUpdate = document.getElementById('statusLastUpdate');
+            
+            container.innerHTML = '<div class="loading">正在加载服务状态...</div>';
+            
+            try {
+                const response = await fetch('/api/system/status');
+                const data = await response.json();
+
+                if (data.services) {
+                    container.innerHTML = data.services.map(service => `
+                        <div class="service-card">
+                            <div class="service-card-header">
+                                <div>
+                                    <div class="service-card-title">${service.name}</div>
+                                    <div class="service-card-desc">${service.description}</div>
+                                </div>
+                                <div class="status-tags">
+                                    <span class="status-tag ${service.running ? 'running' : 'stopped'}">
+                                        ${service.running ? '● 运行中' : '● 已停止'}
+                                    </span>
+                                    <span class="status-tag ${service.enabled ? 'enabled' : 'disabled'}">
+                                        ${service.enabled ? '✓ 已启用' : '✗ 未启用'}
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="service-actions">
+                                <button class="btn-action" onclick="viewServiceLogs('${service.id}', '${service.name}')">📋 查看日志</button>
+                                <button class="btn-action primary" onclick="restartService('${service.id}', '${service.name}')">🔄 重启服务</button>
+                            </div>
+                        </div>
+                    `).join('');
+                    
+                    document.getElementById('platformInfo').textContent = `平台: ${data.platform} | 更新时间: ${data.timestamp}`;
+                    lastUpdate.textContent = `上次更新: ${data.timestamp}`;
+                }
+            } catch (error) {
+                container.innerHTML = `<div class="task-empty"><p>❌ 获取状态失败: ${error.message}</p></div>`;
+                lastUpdate.textContent = '更新失败';
+            }
+        }
+
+        async function viewServiceLogs(serviceId, serviceName) {
+            currentLogService = serviceId;
+            document.getElementById('logsModalTitle').textContent = `📋 ${serviceName} - 日志`;
+            document.getElementById('logsModal').classList.add('active');
+            await loadServiceLogs(serviceId);
+        }
+
+        async function loadServiceLogs(serviceId) {
+            const logContent = document.getElementById('taskLogsContent');
+            logContent.innerHTML = '<div class="log-empty">正在加载日志...</div>';
+
+            try {
+                const response = await fetch(`/api/system/logs/${serviceId}?lines=100`);
+                const data = await response.json();
+
+                if (data.logs) {
+                    const formattedLogs = formatLogs(data.logs);
+                    logContent.innerHTML = formattedLogs;
+                    logContent.scrollTop = 0;
+                } else {
+                    logContent.innerHTML = '<div class="log-empty">暂无日志</div>';
+                }
+            } catch (error) {
+                logContent.innerHTML = `<div class="log-empty" style="color: #ff4d4f;">加载日志失败: ${error.message}</div>`;
+            }
+        }
+
+        function formatLogs(logs) {
+            if (!logs) return '';
+            
+            return logs.split('\n').map(line => {
+                let cssClass = 'log-line';
+                const lowerLine = line.toLowerCase();
+
+                if (lowerLine.includes('error') || lowerLine.includes('exception') || lowerLine.includes('failed')) {
+                    cssClass += ' error';
+                } else if (lowerLine.includes('warning') || lowerLine.includes('warn')) {
+                    cssClass += ' warning';
+                } else if (lowerLine.includes('success') || lowerLine.includes('completed') || lowerLine.includes('done')) {
+                    cssClass += ' success';
+                } else if (lowerLine.includes('info') || lowerLine.includes('[i]')) {
+                    cssClass += ' info';
+                }
+
+                const escaped = line
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;');
+
+                return `<div class="${cssClass}">${escaped}</div>`;
+            }).join('');
+        }
+
+        function runTask(taskId) {
+            console.log('runTask called with taskId:', taskId);
+            currentTaskId = taskId;
+            currentPasswordAction = 'run';
+            document.getElementById('passwordModalTitle').textContent = '▶️ 运行任务';
+            document.getElementById('passwordModal').classList.add('active');
+            document.getElementById('passwordInput').focus();
+        }
+
+        function toggleTask(taskId) {
+            console.log('toggleTask called with taskId:', taskId);
+            currentTaskId = taskId;
+            currentPasswordAction = 'toggle';
+            
+            const task = window.tasksData?.find(t => t.id === taskId);
+            const isDisable = task && task.enabled;
+            console.log('Task current state:', task?.enabled, 'isDisable:', isDisable);
+            
+            document.getElementById('passwordModalTitle').textContent = `${isDisable ? '⏸️' : '▶️'} ${isDisable ? '禁用' : '启用'}任务`;
+            document.getElementById('passwordModal').classList.add('active');
+            document.getElementById('passwordInput').focus();
+        }
+
+        function editTask(taskId) {
+            currentTaskId = taskId;
+            
+            const task = window.tasksData?.find(t => t.id === taskId);
+            if (!task) {
+                alert('无法找到任务信息');
+                return;
+            }
+            
+            document.getElementById('editTaskId').value = task.id;
+            document.getElementById('editTaskName').value = task.name || '';
+            document.getElementById('editTaskDesc').value = task.description || '';
+            document.getElementById('editTaskCommand').value = task.command || '';
+            document.getElementById('editTaskTimeout').value = task.timeout || 300;
+            
+            const scheduleType = task.schedule?.type || 'daily';
+            document.getElementById('editScheduleType').value = scheduleType;
+            
+            if (scheduleType === 'daily') {
+                document.getElementById('scheduleTimeGroup').style.display = 'block';
+                document.getElementById('scheduleMinutesGroup').style.display = 'none';
+                document.getElementById('editScheduleTime').value = task.schedule?.time || '00:00';
+            } else if (scheduleType === 'interval') {
+                document.getElementById('scheduleTimeGroup').style.display = 'none';
+                document.getElementById('scheduleMinutesGroup').style.display = 'block';
+                document.getElementById('editScheduleMinutes').value = task.schedule?.minutes || 60;
+            } else {
+                document.getElementById('scheduleTimeGroup').style.display = 'none';
+                document.getElementById('scheduleMinutesGroup').style.display = 'none';
+            }
+            
+            document.getElementById('editModal').classList.add('active');
+        }
+
+        function viewTaskLogs() {
+            document.getElementById('logsModalTitle').textContent = '📋 调度器日志';
+            document.getElementById('logsModal').classList.add('active');
+            loadSchedulerLogs();
+        }
+
+        async function loadSchedulerLogs() {
+            const container = document.getElementById('taskLogsContent');
+            container.innerHTML = '<div class="log-empty">正在加载日志...</div>';
+            
+            try {
+                const response = await fetch('/api/scheduler/logs?lines=100');
+                const data = await response.json();
+                
+                if (data.logs) {
+                    const formattedLogs = formatLogs(data.logs);
+                    container.innerHTML = formattedLogs;
+                    container.scrollTop = 0;
+                } else {
+                    container.innerHTML = '<div class="log-empty">暂无日志</div>';
+                }
+            } catch (error) {
+                container.innerHTML = `<div class="log-empty" style="color: #ff4d4f;">加载失败: ${error.message}</div>`;
+            }
+        }
+
+        function closePasswordModal() {
+            document.getElementById('passwordModal').classList.remove('active');
+            document.getElementById('passwordInput').value = '';
+            currentPasswordAction = null;
+            currentTaskId = null;
+        }
+
+        function closeEditModal() {
+            document.getElementById('editModal').classList.remove('active');
+            currentTaskId = null;
+        }
+
+        function closeLogsModal() {
+            document.getElementById('logsModal').classList.remove('active');
+        }
+
+        function togglePasswordVisibility() {
+            const input = document.getElementById('passwordInput');
+            const icon = document.getElementById('passwordToggleIcon');
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.textContent = '🙈';
+            } else {
+                input.type = 'password';
+                icon.textContent = '👁️';
+            }
+        }
+
+        async function confirmPasswordAction() {
+            const password = document.getElementById('passwordInput').value;
+            console.log('confirmPasswordAction called, action:', currentPasswordAction, 'taskId:', currentTaskId);
+            
+            if (!password) {
+                alert('请输入密码');
+                return;
+            }
+            
+            // 保存当前操作类型，因为 closePasswordModal 会重置它
+            const action = currentPasswordAction;
+            const taskId = currentTaskId;
+            
+            closePasswordModal();
+            
+            if (action === 'run') {
+                await executeRunTask(taskId, password);
+            } else if (action === 'toggle') {
+                await executeToggleTask(taskId, password);
+            } else if (action === 'restart') {
+                await executeRestartService(taskId, password);
+            } else {
+                console.error('Unknown action:', action);
+            }
+        }
+
+        async function executeRunTask(taskId, password) {
+            console.log('executeRunTask called with taskId:', taskId);
+            try {
+                const response = await fetch(`/api/scheduler/run/${taskId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: password })
+                });
+                const data = await response.json();
+                console.log('Run response:', data);
+                
+                if (data.success) {
+                    alert(`✅ ${data.message}`);
+                } else {
+                    alert(`❌ ${data.message}`);
+                }
+            } catch (error) {
+                console.error('Run error:', error);
+                alert(`❌ 请求失败: ${error.message}`);
+            }
+        }
+
+        async function executeToggleTask(taskId, password) {
+            console.log('executeToggleTask called with taskId:', taskId);
+            try {
+                const response = await fetch(`/api/scheduler/toggle/${taskId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: password })
+                });
+                const data = await response.json();
+                console.log('Toggle response:', data);
+                
+                if (data.success) {
+                    alert(`✅ ${data.message}`);
+                    await loadTasks();
+                } else {
+                    alert(`❌ ${data.message}`);
+                }
+            } catch (error) {
+                console.error('Toggle error:', error);
+                alert(`❌ 请求失败: ${error.message}`);
+            }
+        }
+
+        async function saveTaskConfig() {
+            const taskId = document.getElementById('editTaskId').value;
+            const taskConfig = {
+                name: document.getElementById('editTaskName').value,
+                description: document.getElementById('editTaskDesc').value,
+                command: document.getElementById('editTaskCommand').value,
+                timeout: parseInt(document.getElementById('editTaskTimeout').value) || 300,
+                schedule: {
+                    type: document.getElementById('editScheduleType').value
+                }
+            };
+            
+            if (taskConfig.schedule.type === 'daily') {
+                taskConfig.schedule.time = document.getElementById('editScheduleTime').value || '00:00';
+            } else if (taskConfig.schedule.type === 'interval') {
+                taskConfig.schedule.minutes = parseInt(document.getElementById('editScheduleMinutes').value) || 60;
+            } else if (taskConfig.schedule.type === 'cron') {
+                taskConfig.schedule.expression = '';
+            }
+            
+            const password = prompt('请输入密码以保存配置:');
+            if (!password) return;
+            
+            try {
+                const response = await fetch('/api/scheduler/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        password: password,
+                        task_id: taskId,
+                        config: taskConfig
+                    })
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert('✅ 任务配置已更新');
+                    closeEditModal();
+                    loadTasks();
+                } else {
+                    alert(`❌ ${data.message}`);
+                }
+            } catch (error) {
+                alert(`❌ 请求失败: ${error.message}`);
+            }
+        }
+
+        async function restartService(serviceId, serviceName) {
+            currentTaskId = serviceId;
+            
+            if (!confirm(`⚠️ 确定要重启 ${serviceName} 服务吗?\n\n重启期间服务将暂时不可用。`)) {
+                return;
+            }
+            
+            currentPasswordAction = 'restart';
+            document.getElementById('passwordModalTitle').textContent = `🔄 重启 ${serviceName}`;
+            document.getElementById('passwordModal').classList.add('active');
+            document.getElementById('passwordInput').focus();
+        }
+
+        async function executeRestartService(serviceId, password) {
+            try {
+                const response = await fetch(`/api/system/restart/${serviceId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: password })
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert(`✅ 服务重启成功！`);
+                    loadSystemStatus();
+                } else {
+                    alert(`❌ 重启失败: ${data.message}`);
+                }
+            } catch (error) {
+                alert(`❌ 请求失败: ${error.message}`);
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closePasswordModal();
+                closeEditModal();
+                closeLogsModal();
+            }
+        });
+
+        document.getElementById('passwordModal').addEventListener('click', function(e) {
+            if (e.target === this) closePasswordModal();
+        });
+
+        document.getElementById('editModal').addEventListener('click', function(e) {
+            if (e.target === this) closeEditModal();
+        });
+
+        document.getElementById('logsModal').addEventListener('click', function(e) {
+            if (e.target === this) closeLogsModal();
+        });
+
+        document.getElementById('editScheduleType').addEventListener('change', function() {
+            const type = this.value;
+            document.getElementById('scheduleTimeGroup').style.display = type === 'daily' ? 'block' : 'none';
+            document.getElementById('scheduleMinutesGroup').style.display = type === 'interval' ? 'block' : 'none';
+        });
+    </script>
 </body>
 </html>

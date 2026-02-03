@@ -83,9 +83,15 @@ async function loadFiles(folderName) {
         
         fileData[folderName] = files;
         
-        // 更新文件计数
-        document.getElementById(`count-${folderName}`).textContent = files.length;
-        document.getElementById('fileCount').textContent = `共 ${files.length} 个文件`;
+        const countEl = document.getElementById(`count-${folderName}`);
+        if (countEl) {
+            countEl.textContent = files.length;
+        }
+        
+        const fileCountEl = document.getElementById('fileCount');
+        if (fileCountEl) {
+            fileCountEl.textContent = `共 ${files.length} 个文件`;
+        }
         
         // 渲染文件列表
         if (files.length === 0) {

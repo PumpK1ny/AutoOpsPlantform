@@ -4,10 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>系统状态 - 数据分析结果展示</title>
+    <link rel="shortcut icon" type="image/png" href="{{ url_for('serve_static', path='icon.png') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('serve_static', path='icon.png') }}">
     <link rel="stylesheet" href="{{ url_for('serve_static', path='css/style.css') }}">
     <style>
         .system-status-container {
-            padding: 30px;
+            padding: 20px;
             max-width: 900px;
             margin: 0 auto;
         }
@@ -123,9 +125,9 @@
         }
 
         .btn-action {
-            padding: 8px 16px;
+            padding: 6px 12px;
             border-radius: 6px;
-            font-size: 13px;
+            font-size: 12px;
             cursor: pointer;
             border: 1px solid #d9d9d9;
             background: #fff;
@@ -153,8 +155,8 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            margin-bottom: 24px;
-            padding: 12px 16px;
+            margin-bottom: 16px;
+            padding: 10px 14px;
             background: #f6ffed;
             border: 1px solid #b7eb8f;
             border-radius: 8px;
@@ -221,12 +223,12 @@
 
         .platform-info {
             text-align: center;
-            padding: 20px;
+            padding: 12px;
             color: #999;
-            font-size: 13px;
+            font-size: 12px;
             background: #fafafa;
             border-radius: 8px;
-            margin-top: 20px;
+            margin-top: 16px;
         }
 
         /* 日志弹窗样式 */
