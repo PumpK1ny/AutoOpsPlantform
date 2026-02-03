@@ -59,16 +59,18 @@ class ChatCompressor:
 }"""
 
         # 调用API进行压缩
+        max_tokens = int(os.getenv("ZHIPU_DEFAULT_MAX_TOKENS", "5000"))
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "system", "content": "你是一个专业的对话历史压缩助手，擅长提取和保留关键信息。请严格按照JSON格式输出。"},
+                {"role": "system", "content": "你是一个专业的对话历史压缩助手，擅长提取和保留关键信息。请严格按照JSON格式输出。压缩后的长度要合适，不能过长或者过短。"},
                 {"role": "user", "content": compress_prompt}
             ],
-            max_tokens=2048,
+            max_tokens=max_tokens,
             temperature=0.3,
             top_p=0.8,
-            stream=False
+            stream=False,
+            response_format={"type": "json_object"}
         )
 
         summary_text = response.choices[0].message.content

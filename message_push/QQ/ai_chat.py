@@ -101,12 +101,13 @@ async def _call_zhipu_api(client: ZhipuAI, model: str, messages: list) -> any:
     调用智谱API（异步包装）
     """
     loop = asyncio.get_event_loop()
+    max_tokens = int(os.getenv("QQ_BOT_MAX_TOKENS", "1024"))
     return await loop.run_in_executor(
         None,
         lambda: client.chat.completions.create(
             model=model,
             messages=messages,
-            max_tokens=2048,
+            max_tokens=max_tokens,
             temperature=0.7,
             top_p=0.7,
             stream=False,
