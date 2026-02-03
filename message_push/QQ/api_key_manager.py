@@ -10,7 +10,8 @@ API密钥管理器 - 兼容层
 from api_key_manager import (
     APIKeyInfo,
     UserRequestTracker,
-    APIKeyManager,
+    CrossProcessAPIKeyManager,
+    AsyncAPIKeyManager,
     ZhipuAIClient,
     api_key_manager,
     get_zhipu_client,
@@ -18,12 +19,20 @@ from api_key_manager import (
     get_wait_time_estimate,
     SyncZhipuClient,
     get_sync_client,
+    ManagedZhipuClient,
+    get_sync_client_managed,
+    cross_process_manager,
 )
+
+# 为了向后兼容，保留 APIKeyManager 别名
+APIKeyManager = AsyncAPIKeyManager
 
 __all__ = [
     "APIKeyInfo",
     "UserRequestTracker",
-    "APIKeyManager",
+    "APIKeyManager",  # 向后兼容别名
+    "CrossProcessAPIKeyManager",
+    "AsyncAPIKeyManager",
     "ZhipuAIClient",
     "api_key_manager",
     "get_zhipu_client",
@@ -31,4 +40,7 @@ __all__ = [
     "get_wait_time_estimate",
     "SyncZhipuClient",
     "get_sync_client",
+    "ManagedZhipuClient",
+    "get_sync_client_managed",
+    "cross_process_manager",
 ]
