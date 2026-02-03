@@ -217,9 +217,14 @@ SERVICE_RESTART_PASSWORD=your_password
 
 <div align="center">
 
-| 首页 | 分析报告 | 系统状态 |
-|:---:|:---:|:---:|
-| 📊 数据概览 | 💰 基金分析 | 🖥️ 服务监控 |
+### Web 控制台
+<img src="pic/web_preview.png" alt="Web 控制台" width="80%" />
+
+### 系统控制面板
+<img src="pic/system_control.png" alt="系统控制面板" width="80%" />
+
+### 任务调度器
+<img src="pic/scheduler_preview.png" alt="任务调度器" width="80%" />
 
 </div>
 
