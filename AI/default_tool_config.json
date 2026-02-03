@@ -95,7 +95,7 @@
         "type": "function",
         "function": {
             "name": "self.todo.create",
-            "description": "创建待办事项列表",
+            "description": "创建待办事项列表，使用后必须使用self.todo.finish来退出对话或者标记所有任务完成，否则会持续请求。",
             "parameters": {
                 "type": "object",
                 "properties": {

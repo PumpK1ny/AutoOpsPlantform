@@ -262,7 +262,7 @@ def run_command(command, timeout=60, cwd=None):
 class Todo:
     def __init__(self):
         self.todos={}
-    
+        self._is_running=False
     def _log(self,finish=False):
         if finish: # 当最后结束时，检查所有任务是否完成，如果还有任务没有标记为done，则执行后面的for循环
             if not all(i == "done" for i in self.todos.values()):
@@ -282,6 +282,7 @@ class Todo:
         try:
             for task in task_list:
                 self.todos[task] = "wait"
+            self._is_running=True # 有任务在运行
             self._log()
         except Exception as e:
             print(f"创建任务失败：{str(e)}")
@@ -301,8 +302,15 @@ class Todo:
             for task in self.todos:
                 self.todos[task] = "done"
             self._log(True)
+            self._is_running=False # 任务完成
+            return "success"
         except Exception as e:
             print(f"完成任务失败：{str(e)}")
         return self.todos
+    def is_running(self):
+        if all(i == "done" for i in self.todos.values()):
+            return False
+        else:
+            return self._is_running
 if __name__ == "__main__":
     print(read_file("example.txt"))

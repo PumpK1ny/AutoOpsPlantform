@@ -58,7 +58,6 @@ class ZhipuChat:
         
         self._tool_functions = {}
         self.todo = Todo()
-        
         self._register_todo_methods()
         
         self._load_tools()
@@ -261,8 +260,8 @@ class ZhipuChat:
                         })
                         final_content = content
 
-                    if not final_tool_calls:
-                        break
+                    if not final_tool_calls and not self.todo.is_running():
+                        break # 没有工具调用，跳出循环
 
                     for index, tool_call in final_tool_calls.items():
                         function_name = tool_call['function']['name']

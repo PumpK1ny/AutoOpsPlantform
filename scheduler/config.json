@@ -4,7 +4,7 @@
       "id": "news_summary",
       "name": "每日新闻摘要",
       "description": "每天晚上运行新闻摘要工作流",
-      "command": "./venv/Scripts/python.exe workflow/news_summry/run.py",
+      "command": "venv/bin/python workflow/news_summry/run.py",
       "schedule": {
         "type": "daily",
         "time": "00:00"

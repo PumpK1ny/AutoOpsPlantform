@@ -15,7 +15,7 @@ if project_root not in sys.path:
 
 def handle_market(message):
     """处理市场走向查询"""
-    return "📈 市场走向分析网站：\nhttps://example.com/market-trend\n\n（示例网站，后续会替换为真实数据）"
+    return "📈 市场走向分析网站\n\nhttp://47.108.159.171:5000/"
 
 
 async def handle_compress_async(message):
