@@ -6,13 +6,14 @@ import base64
 import re
 import asyncio
 from dotenv import load_dotenv
+from zhipuai import ZhipuAI
 
 # 加载环境变量
 load_dotenv()
 
-# 导入API密钥管理器（项目级别）
-from api_key_manager import (
-    ManagedAsyncZhipuClient, api_key_manager, get_wait_time_estimate
+# 导入API密钥管理器
+from message_push.QQ.api_key_manager import (
+    api_key_manager, get_wait_time_estimate
 )
 
 # 路径配置
@@ -95,6 +96,26 @@ def calculate_context_tokens(context: list) -> int:
     return total
 
 
+async def _call_zhipu_api(client: ZhipuAI, model: str, messages: list) -> any:
+    """
+    调用智谱API（异步包装）
+    """
+    loop = asyncio.get_event_loop()
+    max_tokens = int(os.getenv("QQ_BOT_MAX_TOKENS", "1024"))
+    return await loop.run_in_executor(
+        None,
+        lambda: client.chat.completions.create(
+            model=model,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=0.7,
+            top_p=0.7,
+            stream=False,
+            thinking={"type": "disabled"}
+        )
+    )
+
+
 class ChatAI:
     """多模态AI对话类 - 支持GLM-4.6V、多API密钥管理"""
 
@@ -154,7 +175,7 @@ class ChatAI:
         仅使用文本模型 QQCHAT_TEXT_MODEL (glm-4.7-flash)
         忽略所有图片内容
         
-        使用API密钥管理器处理并发请求（自动获取空闲密钥，无空闲则等待）
+        使用API密钥管理器处理并发请求
         
         Args:
             cancel_event: 用于取消请求的事件
@@ -180,48 +201,46 @@ class ChatAI:
 
         context = self._build_context()
 
+        status = api_key_manager.get_status()
+        if status["is_full"] and status["queue_size"] == 0:
+            pass
+
+        key_info = await api_key_manager.get_api_key()
+
         max_retries = 3
         retry_delay = 4
         response = None
         last_error = None
         current_task = asyncio.current_task()
 
-        # 使用托管异步客户端（自动获取空闲密钥，无空闲则等待）
-        async with ManagedAsyncZhipuClient() as client:
-            # 注册用户请求跟踪
-            if current_task:
-                api_key_manager.register_user_request(self.user_openid, current_task, client._key_info.name)
+        if current_task:
+            api_key_manager.register_user_request(self.user_openid, current_task, key_info.name)
 
-            try:
-                for attempt in range(max_retries):
-                    try:
-                        if cancel_event.is_set():
-                            return {"text": "", "cancelled": True}
+        try:
+            for attempt in range(max_retries):
+                try:
+                    if cancel_event.is_set():
+                        api_key_manager.unregister_user_request(self.user_openid)
+                        return {"text": "", "cancelled": True}
 
-                        # 调用API
-                        response = await client.chat_completions_create(
-                            model=model,
-                            messages=context,
-                            max_tokens=int(os.getenv("QQ_BOT_MAX_TOKENS", "1024")),
-                            temperature=0.7,
-                            top_p=0.7,
-                            stream=False,
-                            thinking={"type": "disabled"}
-                        )
-                        api_key_manager.mark_success(client._key_info)
-                        break
-                    except asyncio.CancelledError:
-                        raise
-                    except Exception as e:
-                        last_error = str(e)
-                        api_key_manager.mark_error(client._key_info, last_error)
-                        if "429" in last_error or "1305" in last_error or "请求过多" in last_error:
-                            if attempt < max_retries - 1:
-                                await asyncio.sleep(retry_delay * (attempt + 1))
-                                continue
-                        raise
-            finally:
-                api_key_manager.unregister_user_request(self.user_openid)
+                    client = ZhipuAI(api_key=key_info.key)
+                    response = await _call_zhipu_api(client, model, context)
+                    api_key_manager.mark_success(key_info)
+                    break
+                except asyncio.CancelledError:
+                    api_key_manager.unregister_user_request(self.user_openid)
+                    raise
+                except Exception as e:
+                    last_error = str(e)
+                    api_key_manager.mark_error(key_info, last_error)
+                    if "429" in last_error or "1305" in last_error or "请求过多" in last_error:
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(retry_delay * (attempt + 1))
+                            continue
+                    raise
+        finally:
+            api_key_manager.unregister_user_request(self.user_openid)
+            await api_key_manager.release_api_key(key_info)
         
         if response is None:
             return {"text": "⏳ API请求繁忙，请稍后再试~"}

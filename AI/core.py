@@ -1,13 +1,11 @@
 import json
 import os
 import inspect
-import threading
 import time
-import asyncio
 from dotenv import load_dotenv
+from zhipuai import ZhipuAI
 import AI.default_tool
 from AI.default_tool import Todo
-from api_key_manager import get_sync_client_managed
 
 
 
@@ -32,29 +30,35 @@ def get_env_int(key, default):
     return int(value)
 
 class ZhipuChat:
-    def __init__(self, model=None, system_prompt=None, extend_tools=None):
+    def __init__(self, api_key=None, model=None, system_prompt=None, extend_tools=None):
         api_base_url = os.getenv("ZHIPU_API_URL", "https://open.bigmodel.cn/api/paas/v4")
-
+        
+        self.api_key = api_key or os.getenv("ZHIPU_API_KEY")
         self.model = model or os.getenv("ZHIPU_DEFAULT_MODEL", "glm-4.7-flash")
         self.api_url = f"{api_base_url}/chat/completions"
         self.system_prompt = system_prompt or ""
         self.default_tool_config_path = os.getenv("ZHIPU_DEFAULT_TOOL_CONFIG_PATH")
         self.enable_depth_thinking = os.getenv("ZHIPU_ENABLE_DEPTH_THINKING", "disable").lower()
         self.show_thinking_content = os.getenv("ZHIPU_SHOW_THINKING_CONTENT", "true").lower() == "true"
-
+        
         self.default_max_tokens = get_env_int("ZHIPU_DEFAULT_MAX_TOKENS", "16384")
         self.default_temperature = get_env_float("ZHIPU_DEFAULT_TEMPERATURE", "0.2")
         self.default_top_p = get_env_float("ZHIPU_DEFAULT_TOP_P", "0.2")
         self.stream_timeout = get_env_int("ZHIPU_STREAM_TIMEOUT", "60")
+        
+        if not self.api_key:
+            raise ValueError("API密钥未提供，请设置环境变量ZHIPU_API_KEY或传入api_key参数")
 
+        self.client = ZhipuAI(api_key=self.api_key)
+        
         self.context = []
         self.tools = []
         self.context.append({"role": "system", "content": self.system_prompt})
-
+        
         self._tool_functions = {}
         self.todo = Todo()
         self._register_todo_methods()
-
+        
         self._load_tools()
         if extend_tools:
             self._load_tools(extend_tools)
@@ -109,28 +113,28 @@ class ZhipuChat:
     def _serialize_result(self, result):
         if result is None:
             return None
-
+        
         if hasattr(result, '__class__') and result.__class__.__name__ == 'DataFrame':
             return self._serialize_result(result.to_dict('records'))
-
+        
         if hasattr(result, '__class__') and result.__class__.__name__ == 'Series':
             return self._serialize_result(result.to_dict())
-
+        
         if hasattr(result, '__class__') and 'ndarray' in result.__class__.__name__:
             return self._serialize_result(result.tolist())
-
+        
         if hasattr(result, '__class__') and result.__class__.__name__ == 'Timestamp':
             return str(result)
-
+        
         if isinstance(result, (str, int, float, bool)):
             return result
-
+        
         if isinstance(result, list):
             return [self._serialize_result(item) for item in result]
-
+        
         if isinstance(result, dict):
             return {k: self._serialize_result(v) for k, v in result.items()}
-
+        
         return str(result)
 
     def _log(self, message, level="info"):
@@ -149,75 +153,51 @@ class ZhipuChat:
         content_started = False
         tool_call_started = False
 
-        timeout_event = threading.Event()
-        timeout_occurred = False
+        for chunk in response:
+            if not chunk.choices:
+                continue
 
-        def timeout_monitor():
-            timeout_event.wait(self.stream_timeout)
-            if not timeout_event.is_set():
-                nonlocal timeout_occurred
-                timeout_occurred = True
+            delta = chunk.choices[0].delta
 
-        timeout_thread = threading.Thread(target=timeout_monitor, daemon=True)
-        timeout_thread.start()
+            if hasattr(delta, 'reasoning_content') and delta.reasoning_content:
+                if not reasoning_started and delta.reasoning_content.strip():
+                    print("\n🧠 思考过程：")
+                    reasoning_started = True
+                reasoning_content += delta.reasoning_content
+                print(delta.reasoning_content, end="", flush=True)
 
-        try:
-            for chunk in response:
-                if timeout_occurred:
-                    raise TimeoutError(f"流式响应超时，超过 {self.stream_timeout} 秒没有收到数据")
+            if hasattr(delta, 'content') and delta.content:
+                if not content_started and delta.content.strip():
+                    print("\n\n💬 回答内容：")
+                    content_started = True
+                content += delta.content
+                print(delta.content, end="", flush=True)
 
-                timeout_event.set()
-
-                if not chunk.choices:
-                    continue
-
-                delta = chunk.choices[0].delta
-
-                if hasattr(delta, 'reasoning_content') and delta.reasoning_content:
-                    if not reasoning_started and delta.reasoning_content.strip():
-                        print("\n🧠 思考过程：")
-                        reasoning_started = True
-                    reasoning_content += delta.reasoning_content
-                    print(delta.reasoning_content, end="", flush=True)
-
-                if hasattr(delta, 'content') and delta.content:
-                    if not content_started and delta.content.strip():
-                        print("\n\n💬 回答内容：")
-                        content_started = True
-                    content += delta.content
-                    print(delta.content, end="", flush=True)
-
-                if hasattr(delta, 'tool_calls') and delta.tool_calls:
-                    if not tool_call_started:
-                        # print("\n\n🔧 工具调用：")
-                        tool_call_started = True
-                    for tool_call in delta.tool_calls:
-                        index = tool_call.index
-                        if index not in final_tool_calls:
-                            final_tool_calls[index] = {
-                                'id': tool_call.id,
-                                'type': tool_call.type,
-                                'function': {
-                                    'name': tool_call.function.name,
-                                    'arguments': tool_call.function.arguments
-                                }
+            if hasattr(delta, 'tool_calls') and delta.tool_calls:
+                if not tool_call_started:
+                    # print("\n\n🔧 工具调用：")
+                    tool_call_started = True
+                for tool_call in delta.tool_calls:
+                    index = tool_call.index
+                    if index not in final_tool_calls:
+                        final_tool_calls[index] = {
+                            'id': tool_call.id,
+                            'type': tool_call.type,
+                            'function': {
+                                'name': tool_call.function.name,
+                                'arguments': tool_call.function.arguments
                             }
-                        else:
-                            final_tool_calls[index]['function']['arguments'] += tool_call.function.arguments
+                        }
+                    else:
+                        final_tool_calls[index]['function']['arguments'] += tool_call.function.arguments
 
-            if timeout_occurred:
-                raise TimeoutError(f"流式响应超时，超过 {self.stream_timeout} 秒没有收到数据")
+        # if final_tool_calls:
+        #     print("\n📋 命中 Function Calls :")
+        #     for index, tool_call in final_tool_calls.items():
+        #         print(f"  {index}: 函数名: {tool_call['function']['name']}, 参数: {tool_call['function']['arguments']}")
 
-            # if final_tool_calls:
-            #     print("\n📋 命中 Function Calls :")
-            #     for index, tool_call in final_tool_calls.items():
-            #         print(f"  {index}: 函数名: {tool_call['function']['name']}, 参数: {tool_call['function']['arguments']}")
-
-            # print()
-            return reasoning_content, content, final_tool_calls
-
-        finally:
-            timeout_event.set()
+        # print()
+        return reasoning_content, content, final_tool_calls
 
     def chat(self, message):
         self.context.append({"role": "user", "content": message})
@@ -229,20 +209,20 @@ class ZhipuChat:
         while retry_count < max_retries:
             try:
                 while True:
-                    # 使用托管客户端调用API（跨进程安全，自动获取空闲密钥）
-                    with get_sync_client_managed() as client:
-                        response = client.chat.completions.create(
-                            model=self.model,
-                            messages=self.context,
-                            max_tokens=self.default_max_tokens,
-                            temperature=self.default_temperature,
-                            top_p=self.default_top_p,
-                            thinking={"type": self.enable_depth_thinking},
-                            tools=self.tools if self.tools else None,
-                            tool_choice="auto" if self.tools else None,
-                            stream=True
-                        )
-                        reasoning_content, content, final_tool_calls = self._process_stream_response(response)
+                    response = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=self.context,
+                        do_sample=False,
+                        max_tokens=self.default_max_tokens,
+                        temperature=self.default_temperature,
+                        top_p=self.default_top_p,
+                        thinking={"type": self.enable_depth_thinking},
+                        tools=self.tools if self.tools else None,
+                        tool_choice="auto" if self.tools else None,
+                        stream=True,
+                        timeout=self.stream_timeout
+                    )
+                    reasoning_content, content, final_tool_calls = self._process_stream_response(response)
 
                     if reasoning_content:
                         self.context.append({
@@ -309,22 +289,27 @@ class ZhipuChat:
 
     def clear_context(self):
         self.context = []
-
+    
     def get_context(self):
         return self.context
-
+    
     def set_context(self, context):
         self.context = context
 
 if __name__ == "__main__":
-    chat = ZhipuChat()
+    import os
+    api_key = os.getenv("ZHIPU_API_KEY")
+    if not api_key:
+        api_key = input("请输入智普API密钥: ")
+    
+    chat = ZhipuChat(api_key)
     print("开始对话，输入'退出'结束")
-
+    
     while True:
         user_input = input("用户: ")
         if user_input == "退出":
             break
-
+        
         try:
             chat.chat(user_input)
         except Exception as e:
