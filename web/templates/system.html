@@ -336,6 +336,84 @@
             border: 1px solid #d9d9d9;
             font-size: 13px;
         }
+
+        /* 密码输入弹窗样式 */
+        .password-modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1001;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .password-modal-overlay.active {
+            display: flex;
+        }
+
+        .password-modal {
+            background: #fff;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 400px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+        }
+
+        .password-modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid #e8e8e8;
+        }
+
+        .password-modal-header h3 {
+            font-size: 16px;
+            color: #333;
+        }
+
+        .password-modal-body {
+            padding: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 0;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 8px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #d9d9d9;
+            border-radius: 6px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #1890ff;
+        }
+
+        .password-modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            padding: 16px 20px;
+            border-top: 1px solid #e8e8e8;
+        }
     </style>
 </head>
 <body>
@@ -360,6 +438,26 @@
         </div>
 
         <div class="platform-info" id="platformInfo"></div>
+    </div>
+
+    <!-- 密码输入弹窗 -->
+    <div class="password-modal-overlay" id="passwordModal">
+        <div class="password-modal">
+            <div class="password-modal-header">
+                <h3 id="passwordModalTitle">🔐 输入密码</h3>
+                <button class="btn-close" onclick="closePasswordModal()">✕</button>
+            </div>
+            <div class="password-modal-body">
+                <div class="form-group">
+                    <label class="form-label">操作密码</label>
+                    <input type="password" class="form-input" id="passwordInput" placeholder="请输入操作密码" onkeydown="if(event.key==='Enter')confirmPasswordAction()">
+                </div>
+            </div>
+            <div class="password-modal-footer">
+                <button class="btn-action" onclick="closePasswordModal()">取消</button>
+                <button class="btn-action primary" onclick="confirmPasswordAction()">确认</button>
+            </div>
+        </div>
     </div>
 
     <!-- 日志查看弹窗 -->
@@ -522,18 +620,48 @@
             loadLogs();
         }
 
+        // 密码模态框相关变量和函数
+        let pendingRestartServiceId = null;
+        let pendingRestartServiceName = null;
+        let pendingRestartBtn = null;
+        let pendingRestartOriginalText = null;
+
+        function openPasswordModal(serviceId, serviceName) {
+            pendingRestartServiceId = serviceId;
+            pendingRestartServiceName = serviceName;
+            document.getElementById('passwordModalTitle').textContent = `🔄 重启 ${serviceName}`;
+            document.getElementById('passwordModal').classList.add('active');
+            document.getElementById('passwordInput').value = '';
+            document.getElementById('passwordInput').focus();
+        }
+
+        function closePasswordModal() {
+            document.getElementById('passwordModal').classList.remove('active');
+            pendingRestartServiceId = null;
+            pendingRestartServiceName = null;
+        }
+
+        async function confirmPasswordAction() {
+            const password = document.getElementById('passwordInput').value;
+            if (!password) {
+                alert('请输入密码');
+                return;
+            }
+            closePasswordModal();
+            await executeRestartService(pendingRestartServiceId, pendingRestartServiceName, password);
+        }
+
         async function restartService(serviceId, serviceName) {
             // 确认重启
             if (!confirm(`⚠️ 确定要重启 ${serviceName} 服务吗?\n\n重启期间服务将暂时不可用。`)) {
                 return;
             }
 
-            // 输入密码
-            const password = prompt(`请输入重启密码以确认操作:`);
-            if (!password) {
-                return;
-            }
+            // 打开密码输入弹窗
+            openPasswordModal(serviceId, serviceName);
+        }
 
+        async function executeRestartService(serviceId, serviceName, password) {
             // 显示加载状态
             const btn = event.target;
             const originalText = btn.textContent;

@@ -5,6 +5,7 @@ import json
 import base64
 import re
 import asyncio
+import time
 from dotenv import load_dotenv
 from zhipuai import ZhipuAI
 
@@ -13,7 +14,10 @@ load_dotenv()
 
 # 导入API密钥管理器
 from message_push.QQ.api_key_manager import (
-    api_key_manager, get_wait_time_estimate
+    api_key_manager, 
+    get_wait_time_estimate,
+    create_zhipu_client_with_rotation,
+    get_api_key_simple
 )
 
 # 路径配置
@@ -96,24 +100,46 @@ def calculate_context_tokens(context: list) -> int:
     return total
 
 
-async def _call_zhipu_api(client: ZhipuAI, model: str, messages: list) -> any:
+async def _call_zhipu_api_with_rotation(model: str, messages: list) -> any:
     """
-    调用智谱API（异步包装）
+    调用智谱API，支持密钥轮换
     """
     loop = asyncio.get_event_loop()
     max_tokens = int(os.getenv("QQ_BOT_MAX_TOKENS", "1024"))
-    return await loop.run_in_executor(
-        None,
-        lambda: client.chat.completions.create(
-            model=model,
-            messages=messages,
-            max_tokens=max_tokens,
-            temperature=0.7,
-            top_p=0.7,
-            stream=False,
-            thinking={"type": "disabled"}
+    
+    # 获取轮换客户端
+    rotating_client = create_zhipu_client_with_rotation()
+    
+    if rotating_client:
+        # 使用支持轮换的客户端
+        return await loop.run_in_executor(
+            None,
+            lambda: rotating_client.chat_completions_create(
+                model=model,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=0.7,
+                top_p=0.7,
+                stream=False,
+                thinking={"type": "disabled"}
+            )
         )
-    )
+    else:
+        # 回退到普通客户端
+        api_key = get_api_key_simple()
+        client = ZhipuAI(api_key=api_key)
+        return await loop.run_in_executor(
+            None,
+            lambda: client.chat.completions.create(
+                model=model,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=0.7,
+                top_p=0.7,
+                stream=False,
+                thinking={"type": "disabled"}
+            )
+        )
 
 
 class ChatAI:
@@ -201,60 +227,30 @@ class ChatAI:
 
         context = self._build_context()
 
-        status = api_key_manager.get_status()
-        if status["is_full"] and status["queue_size"] == 0:
-            pass
-
-        key_info = await api_key_manager.get_api_key()
-
-        max_retries = 3
-        retry_delay = 4
-        response = None
-        last_error = None
         current_task = asyncio.current_task()
 
-        if current_task:
-            api_key_manager.register_user_request(self.user_openid, current_task, key_info.name)
-
         try:
-            for attempt in range(max_retries):
-                try:
-                    if cancel_event.is_set():
-                        api_key_manager.unregister_user_request(self.user_openid)
-                        return {"text": "", "cancelled": True}
+            if cancel_event.is_set():
+                return {"text": "", "cancelled": True}
 
-                    client = ZhipuAI(api_key=key_info.key)
-                    response = await _call_zhipu_api(client, model, context)
-                    api_key_manager.mark_success(key_info)
-                    break
-                except asyncio.CancelledError:
-                    api_key_manager.unregister_user_request(self.user_openid)
-                    raise
-                except Exception as e:
-                    last_error = str(e)
-                    api_key_manager.mark_error(key_info, last_error)
-                    if "429" in last_error or "1305" in last_error or "请求过多" in last_error:
-                        if attempt < max_retries - 1:
-                            await asyncio.sleep(retry_delay * (attempt + 1))
-                            continue
-                    raise
-        finally:
-            api_key_manager.unregister_user_request(self.user_openid)
-            await api_key_manager.release_api_key(key_info)
-        
-        if response is None:
-            return {"text": "⏳ API请求繁忙，请稍后再试~"}
+            # 使用支持密钥轮换的API调用
+            response = await _call_zhipu_api_with_rotation(model, context)
+            
+            reply = response.choices[0].message.content
+            reply = reply.strip() if reply else ""
+            
+            reply = re.sub(r'</?\w+>', '', reply)
 
-        reply = response.choices[0].message.content
-        reply = reply.strip() if reply else ""
-        
-        reply = re.sub(r'</?\w+>', '', reply)
+            self.dialog_history.append({"role": "assistant", "content": reply})
+            save_history(self.user_openid, self.dialog_history)
 
-        self.dialog_history.append({"role": "assistant", "content": reply})
-
-        save_history(self.user_openid, self.dialog_history)
-
-        return {"text": reply}
+            return {"text": reply}
+            
+        except Exception as e:
+            error_str = str(e)
+            if "429" in error_str or "1302" in error_str or "1305" in error_str or "请求过多" in error_str or "速率限制" in error_str:
+                return {"text": "⏳ API请求繁忙，请稍后再试~"}
+            raise
 
 
 _sessions = {}

@@ -1221,30 +1221,6 @@ body {
     box-shadow: var(--shadow-glow);
 }
 
-.password-input-group {
-    position: relative;
-}
-
-.password-input-group input {
-    padding-right: 44px;
-}
-
-.password-toggle {
-    position: absolute;
-    right: 12px;
-    top: 50%;
-    transform: translateY(-50%);
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    padding: 4px;
-}
-
-.password-toggle:hover {
-    color: var(--text-primary);
-}
-
 /* ============================================
    任务日志样式
    ============================================ */

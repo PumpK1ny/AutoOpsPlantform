@@ -473,35 +473,6 @@
             cursor: pointer;
         }
 
-        .password-input-group {
-            display: flex;
-            align-items: center;
-        }
-
-        .password-input-group .form-input {
-            border-radius: var(--radius-md) 0 0 var(--radius-md);
-            border-right: none;
-            flex: 1;
-        }
-
-        .password-toggle {
-            padding: 8px 12px;
-            border: 1px solid var(--border-color);
-            border-radius: 0 var(--radius-md) var(--radius-md) 0;
-            background: var(--bg-tertiary);
-            color: var(--text-muted);
-            cursor: pointer;
-            transition: all var(--transition-fast);
-            font-size: 0.9rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .password-toggle:hover {
-            background: var(--bg-glass-hover);
-        }
-
         .log-viewer {
             background: #1e1e1e;
             border-radius: var(--radius-md);
@@ -899,12 +870,7 @@
             <div class="modal-body">
                 <div class="form-group">
                     <label class="form-label">操作密码</label>
-                    <div class="password-input-group">
-                        <input type="password" class="form-input" id="passwordInput" placeholder="请输入操作密码">
-                        <button type="button" class="password-toggle" onclick="togglePasswordVisibility()">
-                            <span id="passwordToggleIcon">👁️</span>
-                        </button>
-                    </div>
+                    <input type="password" class="form-input" id="passwordInput" placeholder="请输入操作密码" onkeydown="if(event.key==='Enter')confirmPasswordAction()">
                 </div>
             </div>
             <div class="modal-footer">
@@ -1564,18 +1530,6 @@
             document.getElementById('logsModal').classList.remove('active');
         }
 
-        function togglePasswordVisibility() {
-            const input = document.getElementById('passwordInput');
-            const icon = document.getElementById('passwordToggleIcon');
-            if (input.type === 'password') {
-                input.type = 'text';
-                icon.textContent = '🙈';
-            } else {
-                input.type = 'password';
-                icon.textContent = '👁️';
-            }
-        }
-
         async function confirmPasswordAction() {
             const password = document.getElementById('passwordInput').value;
             console.log('confirmPasswordAction called, action:', currentPasswordAction, 'taskId:', currentTaskId);
@@ -1597,6 +1551,8 @@
                 await executeToggleTask(taskId, password);
             } else if (action === 'restart') {
                 await executeRestartService(taskId, password);
+            } else if (action === 'save') {
+                await executeSaveTaskConfig(password);
             } else {
                 console.error('Unknown action:', action);
             }
@@ -1647,9 +1603,13 @@
             }
         }
 
+        // 保存任务配置时临时存储配置数据
+        let pendingTaskConfig = null;
+        let pendingTaskId = null;
+
         async function saveTaskConfig() {
-            const taskId = document.getElementById('editTaskId').value;
-            const taskConfig = {
+            pendingTaskId = document.getElementById('editTaskId').value;
+            pendingTaskConfig = {
                 name: document.getElementById('editTaskName').value,
                 description: document.getElementById('editTaskDesc').value,
                 command: document.getElementById('editTaskCommand').value,
@@ -1659,16 +1619,27 @@
                 }
             };
             
-            if (taskConfig.schedule.type === 'daily') {
-                taskConfig.schedule.time = document.getElementById('editScheduleTime').value || '00:00';
-            } else if (taskConfig.schedule.type === 'interval') {
-                taskConfig.schedule.minutes = parseInt(document.getElementById('editScheduleMinutes').value) || 60;
-            } else if (taskConfig.schedule.type === 'cron') {
-                taskConfig.schedule.expression = '';
+            if (pendingTaskConfig.schedule.type === 'daily') {
+                pendingTaskConfig.schedule.time = document.getElementById('editScheduleTime').value || '00:00';
+            } else if (pendingTaskConfig.schedule.type === 'interval') {
+                pendingTaskConfig.schedule.minutes = parseInt(document.getElementById('editScheduleMinutes').value) || 60;
+            } else if (pendingTaskConfig.schedule.type === 'cron') {
+                pendingTaskConfig.schedule.expression = '';
             }
             
-            const password = prompt('请输入密码以保存配置:');
-            if (!password) return;
+            // 关闭编辑模态框，打开密码模态框
+            closeEditModal();
+            currentPasswordAction = 'save';
+            document.getElementById('passwordModalTitle').textContent = '💾 保存配置';
+            document.getElementById('passwordModal').classList.add('active');
+            document.getElementById('passwordInput').focus();
+        }
+
+        async function executeSaveTaskConfig(password) {
+            if (!pendingTaskConfig || !pendingTaskId) {
+                alert('❌ 配置数据丢失，请重新编辑');
+                return;
+            }
             
             try {
                 const response = await fetch('/api/scheduler/update', {
@@ -1676,21 +1647,23 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         password: password,
-                        task_id: taskId,
-                        config: taskConfig
+                        task_id: pendingTaskId,
+                        config: pendingTaskConfig
                     })
                 });
                 const data = await response.json();
                 
                 if (data.success) {
                     alert('✅ 任务配置已更新');
-                    closeEditModal();
                     loadTasks();
                 } else {
                     alert(`❌ ${data.message}`);
                 }
             } catch (error) {
                 alert(`❌ 请求失败: ${error.message}`);
+            } finally {
+                pendingTaskConfig = null;
+                pendingTaskId = null;
             }
         }
 

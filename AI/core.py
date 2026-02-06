@@ -6,7 +6,18 @@ from dotenv import load_dotenv
 from zhipuai import ZhipuAI
 import AI.default_tool
 from AI.default_tool import Todo
+import sys
 
+# 添加项目根目录到路径
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+from message_push.QQ.api_key_manager import (
+    api_key_manager, 
+    create_zhipu_client_with_rotation,
+    get_api_key_simple
+)
 
 
 def import_global_functions(module):
@@ -33,7 +44,12 @@ class ZhipuChat:
     def __init__(self, api_key=None, model=None, system_prompt=None, extend_tools=None):
         api_base_url = os.getenv("ZHIPU_API_URL", "https://open.bigmodel.cn/api/paas/v4")
         
-        self.api_key = api_key or os.getenv("ZHIPU_API_KEY")
+        # 使用新的API密钥管理器获取密钥
+        if api_key:
+            self.api_key = api_key
+        else:
+            self.api_key = get_api_key_simple()
+            
         self.model = model or os.getenv("ZHIPU_DEFAULT_MODEL", "glm-4.7-flash")
         self.api_url = f"{api_base_url}/chat/completions"
         self.system_prompt = system_prompt or ""
@@ -49,6 +65,8 @@ class ZhipuChat:
         if not self.api_key:
             raise ValueError("API密钥未提供，请设置环境变量ZHIPU_API_KEY或传入api_key参数")
 
+        # 创建支持密钥轮换的客户端
+        self._rotating_client = create_zhipu_client_with_rotation()
         self.client = ZhipuAI(api_key=self.api_key)
         
         self.context = []
@@ -199,6 +217,28 @@ class ZhipuChat:
         # print()
         return reasoning_content, content, final_tool_calls
 
+    def _call_api_with_rotation(self, **kwargs):
+        """
+        调用API，支持密钥轮换
+        
+        如果配置了轮换客户端，使用轮换客户端；
+        否则使用普通客户端并手动处理429错误
+        """
+        if self._rotating_client:
+            try:
+                return self._rotating_client.chat_completions_create(**kwargs)
+            except Exception as e:
+                error_str = str(e)
+                if "429" in error_str or "1302" in error_str or "并发数过高" in error_str:
+                    self._log(f"所有API密钥均达到速率限制，等待后重试...", level="error")
+                    time.sleep(5)
+                    # 最后一次尝试
+                    return self._rotating_client.chat_completions_create(**kwargs)
+                raise
+        else:
+            # 回退到普通客户端
+            return self.client.chat.completions.create(**kwargs)
+
     def chat(self, message):
         self.context.append({"role": "user", "content": message})
 
@@ -209,7 +249,7 @@ class ZhipuChat:
         while retry_count < max_retries:
             try:
                 while True:
-                    response = self.client.chat.completions.create(
+                    response = self._call_api_with_rotation(
                         model=self.model,
                         messages=self.context,
                         do_sample=False,
@@ -298,7 +338,7 @@ class ZhipuChat:
 
 if __name__ == "__main__":
     import os
-    api_key = os.getenv("ZHIPU_API_KEY")
+    api_key = get_api_key_simple()
     if not api_key:
         api_key = input("请输入智普API密钥: ")
     

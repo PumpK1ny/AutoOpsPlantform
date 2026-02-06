@@ -188,11 +188,13 @@ def main():
     """)
     
     # 检查环境变量
-    api_key = os.getenv("ZHIPU_API_KEY")
+    from message_push.QQ.api_key_manager import get_api_key_simple
+    api_key = get_api_key_simple()
     if not api_key:
         print("⚠️ 警告: 未设置 ZHIPU_API_KEY 环境变量")
         print("   AI对话功能可能无法正常工作")
-        print("   请在 .env 文件中设置 ZHIPU_API_KEY=your_api_key\n")
+        print("   请在 .env 文件中设置 ZHIPU_API_KEY=your_api_key")
+        print("   支持多密钥配置，使用逗号分隔: ZHIPU_API_KEY=key1,key2,key3\n")
     
     # 启动 HTTP 服务器（在后台线程）
     http_thread = Thread(target=run_http_server, daemon=True)
