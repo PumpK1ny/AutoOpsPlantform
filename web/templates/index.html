@@ -1197,9 +1197,8 @@
                 container.innerHTML = html;
 
                 // 自动加载每个运行中任务的日志
-                tasks.forEach(task => {
-                    loadTaskLogForCard(task.task_id);
-                });
+                const logPromises = tasks.map(task => loadTaskLogForCard(task.task_id));
+                await Promise.all(logPromises);
 
             } catch (error) {
                 console.error('Load running tasks error:', error);
@@ -1285,6 +1284,10 @@
                     });
 
                     listContainer.innerHTML = html;
+
+                    // 自动加载每个历史任务的日志
+                    const logPromises = history.map(task => loadTaskLogForCard(task.task_id));
+                    await Promise.all(logPromises);
 
                 } catch (error) {
                     console.error('Load task history error:', error);
