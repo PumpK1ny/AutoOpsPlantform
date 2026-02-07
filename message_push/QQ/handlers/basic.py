@@ -43,10 +43,9 @@ async def handle_compress_async(message):
             return "❌ 对话历史太少，无需压缩~提示：需要至少2轮对话（4条消息）才能压缩。"
 
         # 构建完整上下文用于压缩
-        #system_prompt = load_system_prompt()
-        #context = [{"role": "system", "content": system_prompt}]
+        context=[]
         if summary:
-            context[0]["content"] += f"\n\n【历史对话摘要】\n{summary}"
+            context.append({"role": "system", "content": f"【历史对话摘要】\n{summary}"})
         context.extend(dialog_history)
 
         # 先发送开始压缩提示（使用post_c2c_message）
