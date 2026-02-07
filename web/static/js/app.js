@@ -3,8 +3,93 @@ let currentFolder = null;
 let currentFile = null;
 let fileData = {};
 
+// 主题管理
+const ThemeManager = {
+    STORAGE_KEY: 'eros-theme-preference',
+    
+    // 初始化主题
+    init() {
+        const savedTheme = localStorage.getItem(this.STORAGE_KEY);
+        const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const hour = new Date().getHours();
+        const isNightTime = hour < 6 || hour >= 18;
+        
+        // 优先级：保存的主题 > 系统偏好 > 时间判断
+        let theme = 'light';
+        if (savedTheme) {
+            theme = savedTheme;
+        } else if (systemPrefersDark) {
+            theme = 'dark';
+        } else if (isNightTime) {
+            theme = 'dark';
+        }
+        
+        this.applyTheme(theme);
+        this.createToggleButton();
+        
+        // 监听系统主题变化
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+            if (!localStorage.getItem(this.STORAGE_KEY)) {
+                this.applyTheme(e.matches ? 'dark' : 'light');
+            }
+        });
+    },
+    
+    // 应用主题
+    applyTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        this.updateToggleButton(theme);
+    },
+    
+    // 切换主题
+    toggle() {
+        const currentTheme = document.documentElement.getAttribute('data-theme');
+        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        this.applyTheme(newTheme);
+        localStorage.setItem(this.STORAGE_KEY, newTheme);
+    },
+    
+    // 创建切换按钮
+    createToggleButton() {
+        const existingBtn = document.querySelector('.theme-toggle');
+        if (existingBtn) return;
+        
+        const btn = document.createElement('button');
+        btn.className = 'theme-toggle';
+        btn.setAttribute('aria-label', '切换主题');
+        btn.setAttribute('title', '切换主题 (点击手动切换)');
+        btn.innerHTML = `
+            <span class="sun-icon">☀️</span>
+            <span class="moon-icon">🌙</span>
+        `;
+        btn.addEventListener('click', () => this.toggle());
+        
+        // 将主题按钮插入到第一个 header-actions 中
+        const firstHeaderActions = document.querySelector('.header-actions');
+        if (firstHeaderActions) {
+            // 在按钮组最前面插入分隔线和主题按钮
+            const divider = document.createElement('span');
+            divider.className = 'action-divider';
+            firstHeaderActions.insertBefore(divider, firstHeaderActions.firstChild);
+            firstHeaderActions.insertBefore(btn, firstHeaderActions.firstChild);
+        } else {
+            // 如果没有找到 header-actions，则添加到 body
+            document.body.appendChild(btn);
+        }
+    },
+    
+    // 更新按钮状态
+    updateToggleButton(theme) {
+        const btn = document.querySelector('.theme-toggle');
+        if (btn) {
+            btn.setAttribute('title', theme === 'dark' ? '切换到白天模式' : '切换到夜晚模式');
+        }
+    }
+};
+
 // 页面初始化
 document.addEventListener('DOMContentLoaded', function() {
+    ThemeManager.init();
     initApp();
 });
 

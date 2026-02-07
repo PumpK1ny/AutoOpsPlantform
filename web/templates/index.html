@@ -863,8 +863,14 @@
                 <div class="panel-header">
                     <h2 id="currentFileName">📄 选择文件</h2>
                     <div class="header-actions">
-                        <button class="btn btn-fullscreen" onclick="toggleFullscreen()">🔍 全屏</button>
-                        <button class="btn btn-refresh" onclick="refreshCurrentFile()">🔄 刷新</button>
+                        <button class="btn btn-fullscreen" onclick="toggleFullscreen()" title="全屏查看">
+                            <span>🔍</span>
+                            <span>全屏</span>
+                        </button>
+                        <button class="btn btn-refresh" onclick="refreshCurrentFile()" title="刷新内容">
+                            <span>🔄</span>
+                            <span>刷新</span>
+                        </button>
                     </div>
                 </div>
                 <div class="content-wrapper" id="contentWrapper">
@@ -880,8 +886,14 @@
                 <div class="panel-header">
                     <h2>▶️ 运行中任务</h2>
                     <div class="header-actions">
-                        <button class="btn btn-refresh" onclick="loadRunningTasks()">🔄 刷新</button>
-                        <button class="btn" onclick="loadTaskHistory()">📜 历史记录</button>
+                        <button class="btn btn-refresh" onclick="loadRunningTasks()" title="刷新任务列表">
+                            <span>🔄</span>
+                            <span>刷新</span>
+                        </button>
+                        <button class="btn" onclick="loadTaskHistory()" title="查看历史记录">
+                            <span>📜</span>
+                            <span>历史</span>
+                        </button>
                     </div>
                 </div>
                 <div class="content-wrapper">
