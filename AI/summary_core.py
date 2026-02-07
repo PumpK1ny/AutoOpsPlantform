@@ -46,8 +46,8 @@ def summarize_text(text, api_key=None, model=None):
             {"role": "user", "content": text}
         ],
         "max_tokens": 16384,
-        "temperature": 0.2,
-        "top_p": 0.2,
+        "do_sample": True,
+        "temperature": 0.8,
         "stream": False
     }
     
@@ -64,7 +64,7 @@ def summarize_text(text, api_key=None, model=None):
                 from zhipuai import ZhipuAI
                 client = ZhipuAI(api_key=api_key)
                 response = client.chat.completions.create(**request_params)
-            
+            # 只有这里返回的，才是成功后的总结，其余返回，都是失败的提示
             return response.choices[0].message.content
             
         except Exception as e:
@@ -76,11 +76,9 @@ def summarize_text(text, api_key=None, model=None):
                 if attempt < max_retries - 1:
                     time.sleep(2 * (attempt + 1))  # 递增延迟
                     continue
-            
-            # 非速率限制错误或已达到最大重试次数
-            raise Exception(f"API请求失败: {error_str}")
+            return "summary failed, pass this content"
     
     # 所有重试都失败
     if last_error:
-        raise last_error
-    raise Exception("API请求失败，已达到最大重试次数")
+        return "summary failed, pass this content"
+    return "summary failed, pass this content"
