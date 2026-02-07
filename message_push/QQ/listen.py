@@ -104,7 +104,8 @@ class MessageListener:
                     user_openid,
                     content,
                     compress_callback=lambda msg: asyncio.create_task(compress_callback(msg)),
-                    cancel_event=self._user_cancel_events[user_openid]
+                    cancel_event=self._user_cancel_events[user_openid],
+                    msg_api=api
                 )
 
             chat_task = asyncio.create_task(run_chat())
@@ -138,7 +139,8 @@ class MessageListener:
                         user_openid,
                         combined_message,
                         compress_callback=lambda msg: asyncio.create_task(compress_callback(msg)),
-                        cancel_event=self._user_cancel_events[user_openid]
+                        cancel_event=self._user_cancel_events[user_openid],
+                        msg_api=api
                     )
 
                 combined_task = asyncio.create_task(run_combined_chat())

@@ -259,6 +259,8 @@ def run_command(command, timeout=60, cwd=None):
             "message": f"命令执行失败：{str(e)}",
             "command": command
         }
+   
+
 class Todo:
     def __init__(self):
         self.todos={}
@@ -312,5 +314,7 @@ class Todo:
             return False
         else:
             return self._is_running
+
+
 if __name__ == "__main__":
     print(read_file("example.txt"))

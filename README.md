@@ -2,7 +2,7 @@
 
 <img src="pic/logo.png" alt="Eros Logo" width="120" height="120" />
 
-# 🤖 Eros - 智能基金监控系统
+# Eros - 智能基金监控系统
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.8+-3776AB?style=flat-square&logo=python&logoColor=white" />

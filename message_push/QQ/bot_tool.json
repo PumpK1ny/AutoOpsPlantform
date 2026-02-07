@@ -1,0 +1,44 @@
+[
+    {
+        "type": "function",
+        "function": {
+            "name": "bio_update",
+            "description": "更新用户记忆，保存用户的个人信息、风格、喜好、习惯等重要信息，当用户指明了要保存记忆时或者你觉得这个信息会长期有用时（比如姓名、性别、生日等），调用该工具",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "description": "记忆内容,要求简短，精炼，不易过长"
+                    },
+                    "user_openid": {
+                        "type": "string",
+                        "description": "用户的openid标识符"
+                    }
+                },
+                "required": ["message", "user_openid"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "bio_delete",
+            "description": "删除用户记忆，根据key删除指定的记忆记录，当用户明确删除时才调用该工具",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "user_openid": {
+                        "type": "string",
+                        "description": "用户的openid标识符"
+                    },
+                    "key": {
+                        "type": "string",
+                        "description": "要删除的记忆key，格式为6位数字，例如：000001、000002等"
+                    }
+                },
+                "required": ["user_openid", "key"]
+            }
+        }
+    }
+]

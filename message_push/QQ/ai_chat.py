@@ -1,4 +1,4 @@
-"""QQ机器人AI对话模块 - 支持GLM-4.6V多模态、多API密钥管理"""
+"""QQ机器人AI对话模块 - 支持GLM-4.6V多模态、多API密钥管理、工具调用"""
 
 import os
 import json
@@ -6,9 +6,11 @@ import base64
 import re
 import asyncio
 import time
+import inspect
 from dotenv import load_dotenv
 from zhipuai import ZhipuAI
-
+import aiohttp
+import message_push.QQ.bot_tool as bot_tool
 # 加载环境变量
 load_dotenv()
 
@@ -20,24 +22,40 @@ from message_push.QQ.api_key_manager import (
     get_api_key_simple
 )
 
+def import_global_functions(module):
+    for name, obj in inspect.getmembers(module, inspect.isfunction):
+        globals()[name] = obj
+
+import_global_functions(bot_tool)
 # 路径配置
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 HISTORY_DIR = os.path.join(BASE_DIR, "chat_history")
 SYSTEM_PROMPT_FILE = os.path.join(BASE_DIR, "system_prompt.txt")
-
 # 压缩阈值（token数，大约估算）
 COMPRESS_THRESHOLD = 10000
+
+# HTTP API 配置
+HTTP_API_BASE_URL = os.getenv("QQ_BOT_HTTP_API_URL", "http://localhost:8080")
 
 # 确保历史记录目录存在
 os.makedirs(HISTORY_DIR, exist_ok=True)
 
 
-def load_system_prompt() -> str:
+def load_info(user_openid: str) -> str:
     """从文件加载system prompt"""
     if os.path.exists(SYSTEM_PROMPT_FILE):
         with open(SYSTEM_PROMPT_FILE, "r", encoding="utf-8") as f:
-            return f.read().strip()
-    return "你是QQ群里的聊天机器人，性格活泼可爱，喜欢用表情包。请用简洁友好的中文回答。"
+            system_prompt = f.read().strip()
+    else:
+        system_prompt = "你是QQ群里的聊天机器人，性格活泼可爱，喜欢用表情包。请用简洁友好的中文回答。"
+
+    if os.path.exists(os.path.join(BASE_DIR, "bio", f"{user_openid}.json")):
+        with open(os.path.join(BASE_DIR, "bio", f"{user_openid}.json"), "r", encoding="utf-8") as f:
+            data = json.load(f)
+            bio_content = data
+    else:
+        bio_content = {}
+    return system_prompt, bio_content
 
 
 def load_history(user_openid: str) -> tuple[list, str]:
@@ -100,12 +118,22 @@ def calculate_context_tokens(context: list) -> int:
     return total
 
 
-async def _call_zhipu_api_with_rotation(model: str, messages: list) -> any:
+async def _call_zhipu_api_with_rotation(model: str, messages: list, api_params: dict = None) -> any:
     """
     调用智谱API，支持密钥轮换
     """
     loop = asyncio.get_event_loop()
-    max_tokens = int(os.getenv("QQ_BOT_MAX_TOKENS", "1024"))
+    
+    if api_params is None:
+        api_params = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": int(os.getenv("QQ_BOT_MAX_TOKENS", "1024")),
+            "temperature": 0.7,
+            "top_p": 0.7,
+            "stream": False,
+            "thinking": {"type": "disabled"}
+        }
     
     # 获取轮换客户端
     rotating_client = create_zhipu_client_with_rotation()
@@ -114,15 +142,7 @@ async def _call_zhipu_api_with_rotation(model: str, messages: list) -> any:
         # 使用支持轮换的客户端
         return await loop.run_in_executor(
             None,
-            lambda: rotating_client.chat_completions_create(
-                model=model,
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=0.7,
-                top_p=0.7,
-                stream=False,
-                thinking={"type": "disabled"}
-            )
+            lambda: rotating_client.chat_completions_create(**api_params)
         )
     else:
         # 回退到普通客户端
@@ -130,25 +150,18 @@ async def _call_zhipu_api_with_rotation(model: str, messages: list) -> any:
         client = ZhipuAI(api_key=api_key)
         return await loop.run_in_executor(
             None,
-            lambda: client.chat.completions.create(
-                model=model,
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=0.7,
-                top_p=0.7,
-                stream=False,
-                thinking={"type": "disabled"}
-            )
+            lambda: client.chat.completions.create(**api_params)
         )
 
 
 class ChatAI:
-    """多模态AI对话类 - 支持GLM-4.6V、多API密钥管理"""
+    """多模态AI对话类 - 支持GLM-4.6V、多API密钥管理、工具调用"""
 
-    def __init__(self, user_openid: str):
+    def __init__(self, user_openid: str, msg_api=None):
         self.user_openid = user_openid
+        self.msg_api = msg_api
         self.text_model = os.getenv("QQCHAT_TEXT_MODEL", "glm-4.7-flash")
-        self.base_system_prompt = load_system_prompt()
+        self.base_system_prompt, self.bio = load_info(user_openid)
         self.system_prompt = self.base_system_prompt
 
         self.dialog_history, self.summary = load_history(user_openid)
@@ -156,11 +169,194 @@ class ChatAI:
         self.is_compressing = False
         self.compress_callback = None
 
+        # 工具调用相关
+        self.tools = []
+        self._tool_functions = {}
+        self.enable_depth_thinking = "disabled" # 禁用深度思考
+        self.show_thinking_content = os.getenv("ZHIPU_SHOW_THINKING_CONTENT", "true").lower() == "true"
+        self.default_max_tokens = int(os.getenv("QQ_BOT_MAX_TOKENS", "1024"))
+        self.default_temperature = float(os.getenv("ZHIPU_DEFAULT_TEMPERATURE", "0.7"))
+        self.default_top_p = float(os.getenv("ZHIPU_DEFAULT_TOP_P", "0.7"))
+        # 加载工具
+        self.load_tools_from_file("message_push/QQ/bot_tool.json")
+
+    async def send_message(self, content: str, msg_type: str = "c2c") -> dict:
+        """
+        发送消息到QQ
+
+        Args:
+            content: 消息内容
+            msg_type: 消息类型，c2c 或 group
+
+        Returns:
+            dict: 发送结果
+        """
+        if self.msg_api:
+            try:
+                messages = [content]
+                if r"||" in content:
+                    temp_messages = []
+                    for msg in messages:
+                        temp_messages.extend(msg.split(r"||"))
+                    messages = temp_messages
+                if "\n\n" in content:
+                    temp_messages = []
+                    for msg in messages:
+                        temp_messages.extend(msg.split("\n\n"))
+                    messages = temp_messages
+                messages = [msg.strip() for msg in messages if msg.strip()]
+
+                for i, msg in enumerate(messages):
+                    if msg.strip():
+                        await self.msg_api.post_c2c_message(
+                            openid=self.user_openid,
+                            msg_type=0,
+                            content=msg.strip(),
+                            msg_seq=i + 1
+                        )
+                        if i < len(messages) - 1:
+                            await asyncio.sleep(0.5)
+                return {"success": True}
+            except Exception as e:
+                return {"success": False, "error": str(e)}
+        else:
+            url = f"{HTTP_API_BASE_URL}/api/notify"
+            payload = {
+                "openid": self.user_openid,
+                "content": content,
+                "msg_type": msg_type
+            }
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(url, json=payload) as response:
+                        result = await response.json()
+                        if response.status == 200 and result.get("success"):
+                            return result
+                        else:
+                            error = result.get("error", "未知错误")
+                            return {"success": False, "error": error}
+            except Exception as e:
+                return {"success": False, "error": str(e)}
+
+    def register_tool_function(self, name, func):
+        """注册工具函数"""
+        self._tool_functions[name] = func
+
+    def register_tool_functions_from_module(self, module):
+        """从模块注册所有函数"""
+        for name, obj in inspect.getmembers(module, inspect.isfunction):
+            self._tool_functions[name] = obj
+
+    def load_tools_from_file(self, file_path):
+        """从JSON文件加载工具配置"""
+        if not os.path.exists(file_path):
+            return
+        with open(file_path, "r", encoding="utf-8") as f:
+            new_tools = json.load(f)
+            if isinstance(new_tools, list):
+                self.tools.extend(new_tools)
+            else:
+                self.tools.append(new_tools)
+
+    async def _execute_func(self, func, args):
+        """执行工具函数"""
+        if isinstance(args, str):
+            args = json.loads(args)
+        def truncate_value(v):
+            if isinstance(v, list):
+                v_str = str(v)
+                return v_str[:15] + '···' if len(v_str) > 15 else v
+            elif isinstance(v, str):
+                return v[:15] + '···' if len(v) > 15 else v
+            else:
+                v_str = str(v)
+                return v_str[:15] + '···' if len(v_str) > 15 else v
+        args_short = {k: truncate_value(v) for k, v in args.items()}
+        print(f"\n\n🔧 执行工具函数: {func.__name__} 参数: {args_short}")
+        
+        # 发送QQ通知
+        await self.send_message(f"🔧：{func.__name__}")
+        
+        return func(**args)
+
+    def _serialize_result(self, result):
+        """序列化函数返回结果"""
+        if result is None:
+            return None
+        if hasattr(result, '__class__') and result.__class__.__name__ == 'DataFrame':
+            return self._serialize_result(result.to_dict('records'))
+        if hasattr(result, '__class__') and result.__class__.__name__ == 'Series':
+            return self._serialize_result(result.to_dict())
+        if hasattr(result, '__class__') and 'ndarray' in result.__class__.__name__:
+            return self._serialize_result(result.tolist())
+        if hasattr(result, '__class__') and result.__class__.__name__ == 'Timestamp':
+            return str(result)
+        if isinstance(result, (str, int, float, bool)):
+            return result
+        if isinstance(result, list):
+            return [self._serialize_result(item) for item in result]
+        if isinstance(result, dict):
+            return {k: self._serialize_result(v) for k, v in result.items()}
+        return str(result)
+
+    def _process_stream_response(self, response):
+        """处理流式响应"""
+        reasoning_content = ""
+        content = ""
+        final_tool_calls = {}
+        reasoning_started = False
+        content_started = False
+        tool_call_started = False
+
+        for chunk in response:
+            if not chunk.choices:
+                continue
+
+            delta = chunk.choices[0].delta
+
+            if hasattr(delta, 'reasoning_content') and delta.reasoning_content:
+                if not reasoning_started and delta.reasoning_content.strip():
+                    print("\n🧠 思考过程：")
+                    reasoning_started = True
+                reasoning_content += delta.reasoning_content
+                print(delta.reasoning_content, end="", flush=True)
+
+            if hasattr(delta, 'content') and delta.content:
+                if not content_started and delta.content.strip():
+                    print("\n\n💬 回答内容：")
+                    content_started = True
+                content += delta.content
+                print(delta.content, end="", flush=True)
+
+            if hasattr(delta, 'tool_calls') and delta.tool_calls:
+                if not tool_call_started:
+                    tool_call_started = True
+                for tool_call in delta.tool_calls:
+                    index = tool_call.index
+                    if index not in final_tool_calls:
+                        final_tool_calls[index] = {
+                            'id': tool_call.id,
+                            'type': tool_call.type,
+                            'function': {
+                                'name': tool_call.function.name,
+                                'arguments': tool_call.function.arguments
+                            }
+                        }
+                    else:
+                        final_tool_calls[index]['function']['arguments'] += tool_call.function.arguments
+
+        return reasoning_content, content, final_tool_calls
+
     def _build_context(self) -> list:
         """构建完整的上下文（system + 对话）"""
         context = []
-        
-        context.append({"role": "system", "content": self.system_prompt})
+        system = f""""
+        {self.system_prompt}
+        ## 用户信息：
+        id:{self.user_openid}
+        ### memory:\n{self.bio}
+        """
+        context.append({"role": "system", "content": system})
         context.extend(self.dialog_history)
         return context
 
@@ -200,6 +396,7 @@ class ChatAI:
         发送消息并获取回复
         仅使用文本模型 QQCHAT_TEXT_MODEL (glm-4.7-flash)
         忽略所有图片内容
+        支持工具调用（单轮对话，无while循环）
         
         使用API密钥管理器处理并发请求
         
@@ -222,7 +419,6 @@ class ChatAI:
             return {"text": "🔄 检测到对话历史较长，正在自动压缩上下文..."}
 
         user_message = {"role": "user", "content": message}
-
         self.dialog_history.append(user_message)
 
         context = self._build_context()
@@ -233,19 +429,136 @@ class ChatAI:
             if cancel_event.is_set():
                 return {"text": "", "cancelled": True}
 
+            # 构建API参数
+            api_params = {
+                "model": model,
+                "messages": context,
+                "max_tokens": self.default_max_tokens,
+                "temperature": self.default_temperature,
+                "top_p": self.default_top_p,
+                "stream": True,
+                "thinking": {"type": self.enable_depth_thinking}
+            }
+            
+            if self.tools:
+                api_params["tools"] = self.tools
+                api_params["tool_choice"] = "auto"
+
             # 使用支持密钥轮换的API调用
-            response = await _call_zhipu_api_with_rotation(model, context)
+            response = await _call_zhipu_api_with_rotation(model, context, api_params)
             
-            reply = response.choices[0].message.content
-            reply = reply.strip() if reply else ""
-            
-            reply = re.sub(r'</?\w+>', '', reply)
+            reasoning_content, content, final_tool_calls = self._process_stream_response(response)
 
-            self.dialog_history.append({"role": "assistant", "content": reply})
-            save_history(self.user_openid, self.dialog_history)
+            if reasoning_content:
+                self.dialog_history.append({
+                    "role": "assistant",
+                    "content": reasoning_content
+                })
 
-            return {"text": reply}
-            
+            # 如果有工具调用，执行工具并继续
+            if final_tool_calls:
+                for index, tool_call in final_tool_calls.items():
+                    function_name = tool_call['function']['name']
+                    function_args = tool_call['function']['arguments']
+
+                    func_ref = self._tool_functions.get(function_name)
+                    if not func_ref:
+                        func_ref = globals().get(function_name)
+
+                    if func_ref:
+                        result = await self._execute_func(func_ref, function_args)
+                        serialized_result = self._serialize_result(result)
+                        self.dialog_history.append({
+                            "role": "tool",
+                            "content": json.dumps(serialized_result, ensure_ascii=False),
+                            "tool_call_id": tool_call['id']
+                        })
+                    else:
+                        self.dialog_history.append({
+                            "role": "tool",
+                            "content": json.dumps({"error": f"Function {function_name} not found"}, ensure_ascii=False),
+                            "tool_call_id": tool_call['id']
+                        })
+                        print(f"\n\n⚠️函数 {function_name} 未找到")
+
+                # 执行工具后，再次调用API获取最终回复
+                context = self._build_context()
+                api_params["messages"] = context
+                response = await _call_zhipu_api_with_rotation(model, context, api_params)
+                reasoning_content, content, final_tool_calls = self._process_stream_response(response)
+
+                if reasoning_content:
+                    self.dialog_history.append({
+                        "role": "assistant",
+                        "content": reasoning_content
+                    })
+
+            if content:
+                reply = content.strip() if content else ""
+                reply = re.sub(r'</?\w+>', '', reply)
+                self.dialog_history.append({"role": "assistant", "content": reply})
+                save_history(self.user_openid, self.dialog_history)
+                return {"text": reply}
+            else:
+                # 没有回复，再次请求
+                context = self._build_context()
+                api_params["messages"] = context
+                response = await _call_zhipu_api_with_rotation(model, context, api_params)
+                reasoning_content, content, final_tool_calls = self._process_stream_response(response)
+
+                if reasoning_content:
+                    self.dialog_history.append({
+                        "role": "assistant",
+                        "content": reasoning_content
+                    })
+
+                # 如果有工具调用，执行工具并继续
+                if final_tool_calls:
+                    for index, tool_call in final_tool_calls.items():
+                        function_name = tool_call['function']['name']
+                        function_args = tool_call['function']['arguments']
+
+                        func_ref = self._tool_functions.get(function_name)
+                        if not func_ref:
+                            func_ref = globals().get(function_name)
+
+                        if func_ref:
+                            result = await self._execute_func(func_ref, function_args)
+                            serialized_result = self._serialize_result(result)
+                            self.dialog_history.append({
+                                "role": "tool",
+                                "content": json.dumps(serialized_result, ensure_ascii=False),
+                                "tool_call_id": tool_call['id']
+                            })
+                        else:
+                            self.dialog_history.append({
+                                "role": "tool",
+                                "content": json.dumps({"error": f"Function {function_name} not found"}, ensure_ascii=False),
+                                "tool_call_id": tool_call['id']
+                            })
+                            print(f"\n\n⚠️函数 {function_name} 未找到")
+
+                    # 执行工具后，再次调用API获取最终回复
+                    context = self._build_context()
+                    api_params["messages"] = context
+                    response = await _call_zhipu_api_with_rotation(model, context, api_params)
+                    reasoning_content, content, final_tool_calls = self._process_stream_response(response)
+
+                    if reasoning_content:
+                        self.dialog_history.append({
+                            "role": "assistant",
+                            "content": reasoning_content
+                        })
+
+                if content:
+                    reply = content.strip() if content else ""
+                    reply = re.sub(r'</?\w+>', '', reply)
+                    self.dialog_history.append({"role": "assistant", "content": reply})
+                    save_history(self.user_openid, self.dialog_history)
+                    return {"text": reply}
+                else:
+                    return {"text": "抱歉，我没有生成有效的回复。"}
+
         except Exception as e:
             error_str = str(e)
             if "429" in error_str or "1302" in error_str or "1305" in error_str or "请求过多" in error_str or "速率限制" in error_str:
@@ -289,17 +602,24 @@ async def has_pending_messages(user_openid: str) -> bool:
 
 
 async def chat_with_user(user_openid: str, message: str, compress_callback=None,
-                         cancel_event: asyncio.Event = None) -> dict:
+                         cancel_event: asyncio.Event = None, msg_api=None) -> dict:
     """
     与指定用户对话
     
     如果用户有正在进行的请求，新消息会被加入队列等待处理
     
+    Args:
+        user_openid: 用户openid
+        message: 用户消息
+        compress_callback: 压缩回调函数
+        cancel_event: 取消事件
+        msg_api: 消息API对象
+    
     Returns:
         dict: {"text": 回复文本}
     """
     if user_openid not in _sessions:
-        _sessions[user_openid] = ChatAI(user_openid)
+        _sessions[user_openid] = ChatAI(user_openid, msg_api)
 
     if compress_callback:
         _sessions[user_openid].set_compress_callback(compress_callback)
