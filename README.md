@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="pic/logo.png" alt="Eros Logo" width="120" height="120" />
+<img src="pic/logo_b.jpeg" alt="Eros Logo" width="120" height="120" />
 
 # Eros - 智能基金监控系统
 
