@@ -23,7 +23,7 @@ async def handle_compress_async(message):
     user_openid = getattr(message.author, 'user_openid', getattr(message.author, 'id', 'unknown'))
 
     try:
-        from message_push.QQ.ai_chat import _sessions, load_history, load_system_prompt
+        from message_push.QQ.ai_chat import _sessions, load_history
         from message_push.QQ.ai_chat_compress import compress_context
 
         # 先从内存获取session，如果没有则从文件加载
@@ -43,8 +43,8 @@ async def handle_compress_async(message):
             return "❌ 对话历史太少，无需压缩~提示：需要至少2轮对话（4条消息）才能压缩。"
 
         # 构建完整上下文用于压缩
-        system_prompt = load_system_prompt()
-        context = [{"role": "system", "content": system_prompt}]
+        #system_prompt = load_system_prompt()
+        #context = [{"role": "system", "content": system_prompt}]
         if summary:
             context[0]["content"] += f"\n\n【历史对话摘要】\n{summary}"
         context.extend(dialog_history)
@@ -80,10 +80,6 @@ async def handle_compress_async(message):
             openid=user_openid,
             msg_type=0,
             content=f"""✅ 上下文压缩完成！
-
-【压缩摘要】
-{new_summary}
-
 已保留关键信息，可以继续对话了~""",
             msg_seq=2
         )
