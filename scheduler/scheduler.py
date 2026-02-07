@@ -12,8 +12,20 @@ import pytz
 
 try:
     from .task_monitor import task_monitor
+    from .task_log_manager import task_log_manager
+    TASK_MONITOR_AVAILABLE = True
+    TASK_LOG_AVAILABLE = True
 except ImportError:
-    from task_monitor import task_monitor
+    try:
+        from task_monitor import task_monitor
+        from task_log_manager import task_log_manager
+        TASK_MONITOR_AVAILABLE = True
+        TASK_LOG_AVAILABLE = True
+    except ImportError:
+        task_monitor = None
+        task_log_manager = None
+        TASK_MONITOR_AVAILABLE = False
+        TASK_LOG_AVAILABLE = False
 
 
 class ConfigWatcher(Thread):
@@ -101,11 +113,18 @@ class TaskRunner:
         self.logger.info(f"工作目录: {self.task.working_directory}")
 
         # 记录任务开始到监控器
-        execution = task_monitor.start_task(
-            task_id=self.task.id,
-            task_name=self.task.name,
-            task_type="scheduled"
-        )
+        if TASK_MONITOR_AVAILABLE and task_monitor:
+            execution = task_monitor.start_task(
+                task_id=self.task.id,
+                task_name=self.task.name,
+                task_type="scheduled"
+            )
+
+        # 开始记录任务日志
+        log_file = None
+        if TASK_LOG_AVAILABLE and task_log_manager:
+            log_file = task_log_manager.start_task_log(self.task.id, self.task.name)
+            self.logger.info(f"任务日志文件: {log_file}")
 
         final_status = "failed"
         final_output = ""
@@ -114,28 +133,24 @@ class TaskRunner:
         for attempt in range(self.settings.retry_count):
             try:
                 self.logger.info(f"第 {attempt + 1} 次尝试执行...")
-                result = self._execute_command()
+                result = self._execute_command_with_logging()
                 self.last_run = datetime.now(pytz.timezone(self.settings.timezone))
 
-                self.logger.info(f"子进程返回码: {result.returncode}")
+                self.logger.info(f"子进程返回码: {result['returncode']}")
 
-                if result.returncode == 0:
+                if result['returncode'] == 0:
                     self.last_status = "success"
-                    self.last_output = result.stdout
+                    self.last_output = result['stdout']
                     final_status = "completed"
-                    final_output = result.stdout
+                    final_output = result['stdout']
                     self.logger.info(f"任务 {self.task.name} 执行成功")
-                    if result.stdout:
-                        self.logger.info(f"输出: {result.stdout[:500]}")
                     break
                 else:
                     self.last_status = "failed"
-                    self.last_output = result.stderr
+                    self.last_output = result['stderr']
                     final_status = "failed"
-                    final_error = result.stderr
+                    final_error = result['stderr']
                     self.logger.error(f"任务 {self.task.name} 执行失败")
-                    if result.stderr:
-                        self.logger.error(f"错误输出: {result.stderr[:500]}")
 
                     if attempt < self.settings.retry_count - 1:
                         self.logger.info(f"{self.settings.retry_delay}秒后重试...")
@@ -161,18 +176,29 @@ class TaskRunner:
                 if attempt < self.settings.retry_count - 1:
                     time.sleep(self.settings.retry_delay)
 
+        # 结束任务日志记录
+        if TASK_LOG_AVAILABLE and task_log_manager:
+            task_log_manager.end_task_log(self.task.id, final_status)
+
         # 记录任务结束到监控器
-        task_monitor.end_task(
-            task_id=self.task.id,
-            status=final_status,
-            output=final_output,
-            error=final_error
-        )
+        if TASK_MONITOR_AVAILABLE and task_monitor:
+            task_monitor.end_task(
+                task_id=self.task.id,
+                status=final_status,
+                output=final_output,
+                error=final_error
+            )
 
         self.logger.info(f"任务 {self.task.name} 执行结束，最终状态: {self.last_status}")
         self.running = False
 
-    def _execute_command(self) -> subprocess.CompletedProcess:
+    def _execute_command_with_logging(self) -> dict:
+        """
+        执行命令并实时捕获输出到日志文件
+        
+        Returns:
+            dict: 包含 returncode, stdout, stderr
+        """
         work_dir = Path(self.task.working_directory).expanduser().resolve()
         
         # 设置环境变量，确保子进程使用 UTF-8 编码
@@ -182,36 +208,79 @@ class TaskRunner:
         
         self.logger.info(f"启动子进程: {self.task.command}")
         
-        # 使用 Popen 启动子进程，输出重定向到 devnull
-        import subprocess
-        with subprocess.Popen(
+        # 使用 Popen 启动子进程，捕获输出
+        process = subprocess.Popen(
             self.task.command,
             shell=True,
             cwd=work_dir,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            env=env
-        ) as process:
-            # 等待进程完成或超时
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+            text=True,
+            encoding='utf-8',
+            errors='replace'
+        )
+        
+        stdout_lines = []
+        stderr_lines = []
+        
+        # 创建线程实时读取输出
+        def read_stdout():
             try:
-                process.wait(timeout=self.task.timeout)
+                for line in iter(process.stdout.readline, ''):
+                    if line:
+                        line_str = line.rstrip('\n\r')
+                        stdout_lines.append(line_str)
+                        if TASK_LOG_AVAILABLE and task_log_manager:
+                            task_log_manager.write_log(self.task.id, line_str, is_error=False)
+            except Exception as e:
+                self.logger.error(f"读取stdout失败: {e}")
+        
+        def read_stderr():
+            try:
+                for line in iter(process.stderr.readline, ''):
+                    if line:
+                        line_str = line.rstrip('\n\r')
+                        stderr_lines.append(line_str)
+                        if TASK_LOG_AVAILABLE and task_log_manager:
+                            task_log_manager.write_log(self.task.id, line_str, is_error=True)
+            except Exception as e:
+                self.logger.error(f"读取stderr失败: {e}")
+        
+        # 启动读取线程
+        stdout_thread = Thread(target=read_stdout, daemon=True)
+        stderr_thread = Thread(target=read_stderr, daemon=True)
+        stdout_thread.start()
+        stderr_thread.start()
+        
+        # 等待进程完成或超时
+        try:
+            returncode = process.wait(timeout=self.task.timeout)
+        except subprocess.TimeoutExpired:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
             except subprocess.TimeoutExpired:
-                process.terminate()
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait()
-                raise subprocess.TimeoutExpired(self.task.command, self.task.timeout)
+                process.kill()
+                process.wait()
+            returncode = -1  # 超时标记
         
-        # 构造类似 subprocess.run 的结果
-        class FakeResult:
-            def __init__(self, returncode):
-                self.returncode = returncode
-                self.stdout = ""
-                self.stderr = ""
+        # 等待读取线程完成
+        stdout_thread.join(timeout=2)
+        stderr_thread.join(timeout=2)
         
-        return FakeResult(process.returncode)
+        # 关闭管道
+        try:
+            process.stdout.close()
+            process.stderr.close()
+        except:
+            pass
+        
+        return {
+            'returncode': returncode,
+            'stdout': '\n'.join(stdout_lines),
+            'stderr': '\n'.join(stderr_lines)
+        }
 
 
 class TaskScheduler:

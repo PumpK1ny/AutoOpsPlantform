@@ -249,19 +249,24 @@ class ZhipuChat:
         while retry_count < max_retries:
             try:
                 while True:
-                    response = self._call_api_with_rotation(
-                        model=self.model,
-                        messages=self.context,
-                        do_sample=False,
-                        max_tokens=self.default_max_tokens,
-                        temperature=self.default_temperature,
-                        top_p=self.default_top_p,
-                        thinking={"type": self.enable_depth_thinking},
-                        tools=self.tools if self.tools else None,
-                        tool_choice="auto" if self.tools else None,
-                        stream=True,
-                        timeout=self.stream_timeout
-                    )
+                    api_params = {
+                        "model": self.model,
+                        "messages": self.context,
+                        "do_sample": True,
+                        "max_tokens": self.default_max_tokens,
+                        "thinking": {"type": self.enable_depth_thinking},
+                        "tools": self.tools if self.tools else None,
+                        "tool_choice": "auto" if self.tools else None,
+                        "stream": True,
+                        "timeout": self.stream_timeout
+                    }
+                    
+                    if self.default_temperature > 0:
+                        api_params["temperature"] = self.default_temperature
+                    elif self.default_top_p > 0:
+                        api_params["top_p"] = self.default_top_p
+                    
+                    response = self._call_api_with_rotation(**api_params)
                     reasoning_content, content, final_tool_calls = self._process_stream_response(response)
 
                     if reasoning_content:

@@ -19,14 +19,14 @@
     {
         "type": "function",
         "function": {
-            "name": "FundAnalysiser.run",
-            "description": "基金分析Agent，用于分析基金相关技术指标",
+            "name": "SectorFundFlowAnalyzer.run",
+            "description": "板块资金流向分析Agent，用于分析板块资金流向数据",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "message": {
                         "type": "string",
-                        "description": "The prompt for the FundAnalysiser agent"
+                        "description": "The prompt for the SectorFundFlowAnalyzer agent"
                     }
                 },
                 "required": ["message"]

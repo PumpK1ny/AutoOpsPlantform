@@ -8,6 +8,7 @@ import json
 import subprocess
 import platform
 import sys
+import threading
 from datetime import datetime
 from flask import Flask, render_template, jsonify, send_from_directory, request
 
@@ -15,13 +16,17 @@ from flask import Flask, render_template, jsonify, send_from_directory, request
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_DIR)
 
-# 导入任务监控器
+# 导入任务监控器和日志管理器
 try:
     from scheduler.task_monitor import task_monitor
+    from scheduler.task_log_manager import task_log_manager
     TASK_MONITOR_AVAILABLE = True
+    TASK_LOG_AVAILABLE = True
 except ImportError:
     TASK_MONITOR_AVAILABLE = False
+    TASK_LOG_AVAILABLE = False
     task_monitor = None
+    task_log_manager = None
 
 app = Flask(__name__)
 
@@ -479,133 +484,184 @@ def api_scheduler_tasks():
 @app.route("/api/scheduler/run/<task_id>", methods=["POST"])
 def api_scheduler_run(task_id):
     """手动运行指定任务"""
-    data = request.get_json(silent=True) or {}
-    password = data.get("password", "")
-    
-    if password != RESTART_PASSWORD:
-        return jsonify({
-            "success": False,
-            "message": "密码错误"
-        }), 403
-    
-    config = load_scheduler_config()
-    if not config:
-        return jsonify({"success": False, "message": "无法加载调度器配置"}), 500
-    
-    task = None
-    for task_dict in config.get("tasks", []):
-        if task_dict.get("id") == task_id:
-            task = task_dict
-            break
-    
-    if not task:
-        return jsonify({"success": False, "message": f"任务 {task_id} 不存在"}), 404
-    
-    if not task.get("enabled", True):
-        return jsonify({"success": False, "message": "任务已禁用，无法运行"}), 400
-    
     try:
-        import subprocess
-        import threading
-        work_dir = task.get("working_directory", PROJECT_DIR)
-        timeout = task.get("timeout", 300)
-        
-        env = os.environ.copy()
-        env['PYTHONIOENCODING'] = 'utf-8'
-        env['LANG'] = 'en_US.UTF-8'
-        
-        # 记录任务到监控器（手动运行）
-        if TASK_MONITOR_AVAILABLE:
-            task_monitor.start_task(
-                task_id=task_id,
-                task_name=task.get('name', ''),
-                task_type="manual"
-            )
-        
-        # 使用 Popen 启动进程以便获取 PID
-        process = subprocess.Popen(
-            task.get("command"),
-            shell=True,
-            cwd=work_dir,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            env=env
-        )
-        
-        # 更新 PID 到监控器
-        if TASK_MONITOR_AVAILABLE:
-            task_monitor.update_task_pid(task_id, process.pid)
-        
-        try:
-            stdout, stderr = process.communicate(timeout=timeout)
-            
-            if process.returncode == 0:
-                # 记录任务完成
-                if TASK_MONITOR_AVAILABLE:
-                    task_monitor.end_task(
-                        task_id=task_id,
-                        status="completed",
-                        output=stdout,
-                        error=""
-                    )
-                return jsonify({
-                    "success": True,
-                    "message": f"任务 '{task.get('name')}' 执行成功",
-                    "output": stdout[:500] if stdout else "",
-                    "pid": process.pid
-                })
-            else:
-                # 记录任务失败
-                if TASK_MONITOR_AVAILABLE:
-                    task_monitor.end_task(
-                        task_id=task_id,
-                        status="failed",
-                        output=stdout,
-                        error=stderr
-                    )
-                return jsonify({
-                    "success": False,
-                    "message": f"任务执行失败",
-                    "error": stderr[:500] if stderr else "",
-                    "pid": process.pid
-                })
-        
-        except subprocess.TimeoutExpired:
-            process.terminate()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait()
-            
-            # 记录任务超时
-            if TASK_MONITOR_AVAILABLE:
-                task_monitor.end_task(
-                    task_id=task_id,
-                    status="timeout",
-                    output="",
-                    error=f"任务执行超时（{timeout}秒）"
-                )
+        data = request.get_json(silent=True) or {}
+        password = data.get("password", "")
+
+        if password != RESTART_PASSWORD:
             return jsonify({
                 "success": False,
-                "message": f"任务执行超时（{timeout}秒）",
-                "pid": process.pid
-            })
-    
+                "message": "密码错误"
+            }), 403
+
+        config = load_scheduler_config()
+        if not config:
+            return jsonify({"success": False, "message": "无法加载调度器配置"}), 500
+
+        task = None
+        for task_dict in config.get("tasks", []):
+            if task_dict.get("id") == task_id:
+                task = task_dict
+                break
+
+        if not task:
+            return jsonify({"success": False, "message": f"任务 {task_id} 不存在"}), 404
+
+        if not task.get("enabled", True):
+            return jsonify({"success": False, "message": "任务已禁用，无法运行"}), 400
+
+        # 在后台线程中运行任务，以便立即返回响应
+        def run_task_in_background():
+            import subprocess
+
+            work_dir = task.get("working_directory", PROJECT_DIR)
+            timeout = task.get("timeout", 300)
+
+            env = os.environ.copy()
+            env['PYTHONIOENCODING'] = 'utf-8'
+            env['LANG'] = 'en_US.UTF-8'
+
+            # 记录任务到监控器（手动运行）
+            if TASK_MONITOR_AVAILABLE:
+                task_monitor.start_task(
+                    task_id=task_id,
+                    task_name=task.get('name', ''),
+                    task_type="manual"
+                )
+
+            # 开始记录任务日志
+            if TASK_LOG_AVAILABLE:
+                log_file = task_log_manager.start_task_log(task_id, task.get('name', ''))
+                print(f"任务日志文件: {log_file}")
+
+            stdout_lines = []
+            stderr_lines = []
+
+            try:
+                # 使用 Popen 启动进程以便获取 PID
+                process = subprocess.Popen(
+                    task.get("command"),
+                    shell=True,
+                    cwd=work_dir,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    encoding='utf-8',
+                    errors='replace',
+                    env=env
+                )
+
+                # 更新 PID 到监控器
+                if TASK_MONITOR_AVAILABLE:
+                    task_monitor.update_task_pid(task_id, process.pid)
+
+                # 创建线程实时读取输出
+                def read_stdout():
+                    try:
+                        for line in iter(process.stdout.readline, ''):
+                            if line:
+                                line_str = line.rstrip('\n\r')
+                                stdout_lines.append(line_str)
+                                if TASK_LOG_AVAILABLE:
+                                    task_log_manager.write_log(task_id, line_str, is_error=False)
+                    except Exception as e:
+                        print(f"读取stdout失败: {e}")
+
+                def read_stderr():
+                    try:
+                        for line in iter(process.stderr.readline, ''):
+                            if line:
+                                line_str = line.rstrip('\n\r')
+                                stderr_lines.append(line_str)
+                                if TASK_LOG_AVAILABLE:
+                                    task_log_manager.write_log(task_id, line_str, is_error=True)
+                    except Exception as e:
+                        print(f"读取stderr失败: {e}")
+
+                # 启动读取线程
+                stdout_thread = threading.Thread(target=read_stdout, daemon=True)
+                stderr_thread = threading.Thread(target=read_stderr, daemon=True)
+                stdout_thread.start()
+                stderr_thread.start()
+
+                # 等待进程完成或超时
+                try:
+                    returncode = process.wait(timeout=timeout)
+
+                    # 等待读取线程完成
+                    stdout_thread.join(timeout=2)
+                    stderr_thread.join(timeout=2)
+
+                    # 关闭管道
+                    try:
+                        process.stdout.close()
+                        process.stderr.close()
+                    except:
+                        pass
+
+                    final_status = "completed" if returncode == 0 else "failed"
+                    final_output = '\n'.join(stdout_lines)
+                    final_error = '\n'.join(stderr_lines)
+
+                except subprocess.TimeoutExpired:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+
+                    final_status = "timeout"
+                    final_output = '\n'.join(stdout_lines)
+                    final_error = f"任务执行超时（{timeout}秒）"
+
+                # 结束任务日志记录
+                if TASK_LOG_AVAILABLE:
+                    task_log_manager.end_task_log(task_id, final_status)
+
+                # 记录任务结束到监控器
+                if TASK_MONITOR_AVAILABLE:
+                    task_monitor.end_task(
+                        task_id=task_id,
+                        status=final_status,
+                        output=final_output,
+                        error=final_error
+                    )
+
+            except Exception as e:
+                # 结束任务日志记录
+                if TASK_LOG_AVAILABLE:
+                    task_log_manager.end_task_log(task_id, "error")
+
+                # 记录任务异常
+                if TASK_MONITOR_AVAILABLE:
+                    task_monitor.end_task(
+                        task_id=task_id,
+                        status="error",
+                        output="",
+                        error=str(e)
+                    )
+
+        # 启动后台线程运行任务
+        task_thread = threading.Thread(target=run_task_in_background, daemon=True)
+        task_thread.start()
+
+        return jsonify({
+            "success": True,
+            "message": f"任务 '{task.get('name')}' 已启动",
+            "task_id": task_id
+        })
+
     except Exception as e:
-        # 记录任务异常
-        if TASK_MONITOR_AVAILABLE:
-            task_monitor.end_task(
-                task_id=task_id,
-                status="error",
-                output="",
-                error=str(e)
-            )
+        import traceback
+        error_msg = f"运行任务时发生错误: {str(e)}"
+        print(f"[ERROR] {error_msg}")
+        print(traceback.format_exc())
         return jsonify({
             "success": False,
-            "message": f"执行出错: {str(e)}"
-        })
+            "message": error_msg,
+            "error": str(e)
+        }), 500
 
 
 @app.route("/api/scheduler/toggle/<task_id>", methods=["POST"])
@@ -808,6 +864,92 @@ def api_task_monitor_status(task_id):
             "error": f"获取任务状态失败: {str(e)}",
             "task_id": task_id,
             "is_running": False
+        }), 500
+
+
+# ==================== 任务日志 API ====================
+
+@app.route("/api/task/logs/<task_id>")
+def api_task_logs_list(task_id):
+    """获取任务的所有日志文件列表"""
+    if not TASK_LOG_AVAILABLE:
+        return jsonify({
+            "error": "任务日志模块不可用",
+            "logs": []
+        }), 503
+    
+    try:
+        logs = task_log_manager.get_task_logs(task_id)
+        return jsonify({
+            "task_id": task_id,
+            "logs": logs,
+            "count": len(logs),
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        })
+    except Exception as e:
+        return jsonify({
+            "error": f"获取日志列表失败: {str(e)}",
+            "task_id": task_id,
+            "logs": []
+        }), 500
+
+
+@app.route("/api/task/log/<task_id>/<path:log_filename>")
+def api_task_log_content(task_id, log_filename):
+    """获取指定日志文件的内容"""
+    if not TASK_LOG_AVAILABLE:
+        return jsonify({
+            "error": "任务日志模块不可用",
+            "content": ""
+        }), 503
+    
+    try:
+        lines = request.args.get("lines", 200, type=int)
+        content = task_log_manager.get_log_content(task_id, log_filename, lines)
+        return jsonify({
+            "task_id": task_id,
+            "log_filename": log_filename,
+            "content": content,
+            "lines": lines,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        })
+    except Exception as e:
+        return jsonify({
+            "error": f"获取日志内容失败: {str(e)}",
+            "task_id": task_id,
+            "log_filename": log_filename,
+            "content": ""
+        }), 500
+
+
+@app.route("/api/task/log/latest/<task_id>")
+def api_task_log_latest(task_id):
+    """获取任务的最新日志内容"""
+    if not TASK_LOG_AVAILABLE:
+        return jsonify({
+            "error": "任务日志模块不可用",
+            "content": ""
+        }), 503
+    
+    try:
+        lines = request.args.get("lines", 200, type=int)
+        content = task_log_manager.get_latest_log_content(task_id, lines)
+        
+        # 检查任务是否正在运行
+        is_running = task_log_manager.is_task_running(task_id)
+        
+        return jsonify({
+            "task_id": task_id,
+            "content": content,
+            "is_running": is_running,
+            "lines": lines,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        })
+    except Exception as e:
+        return jsonify({
+            "error": f"获取最新日志失败: {str(e)}",
+            "task_id": task_id,
+            "content": ""
         }), 500
 
 

@@ -569,8 +569,10 @@
                     // 格式化日志内容，添加颜色高亮
                     const formattedLogs = formatLogs(data.logs);
                     logContent.innerHTML = formattedLogs;
-                    // 滚动到底部
-                    logContent.scrollTop = logContent.scrollHeight;
+                    // 使用 requestAnimationFrame 确保DOM更新后再滚动到底部
+                    requestAnimationFrame(() => {
+                        logContent.scrollTop = logContent.scrollHeight;
+                    });
                 } else {
                     logContent.innerHTML = '<div class="log-loading">暂无日志</div>';
                 }

@@ -438,6 +438,8 @@ body {
     border-radius: var(--radius-lg);
     padding: 24px;
     min-height: 100%;
+    max-height: calc(100vh - 200px);
+    overflow-y: auto;
     border: 1px solid var(--border-color);
     box-shadow: var(--shadow-lg);
     transition: all var(--transition-normal);

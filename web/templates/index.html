@@ -712,6 +712,86 @@
             background: rgba(139, 92, 246, 0.15);
             color: #8b5cf6;
         }
+
+        /* 任务卡片内日志显示样式 */
+        .task-log-section {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .task-log-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .btn-log-refresh {
+            padding: 4px 10px;
+            border-radius: var(--radius-sm);
+            font-size: 0.75rem;
+            cursor: pointer;
+            border: 1px solid var(--border-color);
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            transition: all var(--transition-fast);
+        }
+
+        .btn-log-refresh:hover {
+            border-color: var(--primary-color);
+            color: var(--text-primary);
+            background: var(--bg-glass-hover);
+        }
+
+        .task-log-content {
+            background: #1e1e1e;
+            border-radius: var(--radius-md);
+            padding: 12px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 0.8rem;
+            line-height: 1.5;
+            color: #d4d4d4;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .task-log-content .log-line {
+            padding: 1px 0;
+        }
+
+        .task-log-content .log-line.error { color: #f48771; }
+        .task-log-content .log-line.warning { color: #dcdcaa; }
+        .task-log-content .log-line.success { color: #4ec9b0; }
+        .task-log-content .log-line.info { color: #4fc1ff; }
+
+        .log-loading {
+            text-align: center;
+            padding: 20px;
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
+        .log-empty {
+            text-align: center;
+            padding: 20px;
+            color: var(--text-muted);
+        }
+
+        /* 历史任务卡片日志区域 */
+        .history-task-card .task-log-section {
+            margin-top: 12px;
+            padding-top: 12px;
+        }
+
+        .history-task-card .task-log-content {
+            max-height: 150px;
+            font-size: 0.75rem;
+        }
     </style>
 </head>
 <body>
@@ -939,7 +1019,7 @@
             </div>
             <div class="modal-footer">
                 <button class="btn-modal" onclick="closeLogsModal()">关闭</button>
-                <button class="btn-modal primary" onclick="loadSchedulerLogs()">🔄 刷新</button>
+                <button class="btn-modal primary" onclick="refreshCurrentLogs()">🔄 刷新</button>
             </div>
         </div>
     </div>
@@ -1073,7 +1153,7 @@
                         '<span class="task-type-badge scheduled">定时</span>';
 
                     html += `
-                        <div class="running-task-card">
+                        <div class="running-task-card" data-task-id="${task.task_id}">
                             <div class="running-task-header">
                                 <div class="running-task-title">
                                     ${task.task_name}
@@ -1101,11 +1181,25 @@
                                 </div>
                                 ` : ''}
                             </div>
+                            <div class="task-log-section">
+                                <div class="task-log-header">
+                                    <span>📋 实时日志</span>
+                                    <button class="btn-log-refresh" onclick="refreshTaskLog('${task.task_id}')">🔄 刷新</button>
+                                </div>
+                                <div class="task-log-content" id="task-log-${task.task_id}">
+                                    <div class="log-loading">正在加载日志...</div>
+                                </div>
+                            </div>
                         </div>
                     `;
                 });
 
                 container.innerHTML = html;
+
+                // 自动加载每个运行中任务的日志
+                tasks.forEach(task => {
+                    loadTaskLogForCard(task.task_id);
+                });
 
             } catch (error) {
                 console.error('Load running tasks error:', error);
@@ -1162,7 +1256,7 @@
                             '<span class="task-type-badge scheduled">定时</span>';
 
                         html += `
-                            <div class="history-task-card ${statusClass}">
+                            <div class="history-task-card ${statusClass}" data-task-id="${task.task_id}">
                                 <div class="history-task-header">
                                     <div class="history-task-title">
                                         ${task.task_name}
@@ -1177,6 +1271,15 @@
                                     ${task.end_time ? `<span>🏁 ${task.end_time}</span>` : ''}
                                 </div>
                                 ${task.error ? `<div style="margin-top: 8px; color: var(--danger); font-size: 0.8rem;">❌ ${task.error.substring(0, 100)}${task.error.length > 100 ? '...' : ''}</div>` : ''}
+                                <div class="task-log-section">
+                                    <div class="task-log-header">
+                                        <span>📋 执行日志</span>
+                                        <button class="btn-log-refresh" onclick="refreshTaskLog('${task.task_id}')">🔄 刷新</button>
+                                    </div>
+                                    <div class="task-log-content" id="task-log-${task.task_id}">
+                                        <div class="log-loading">正在加载日志...</div>
+                                    </div>
+                                </div>
                             </div>
                         `;
                     });
@@ -1305,7 +1408,7 @@
                                     <button class="btn-task run" onclick="runTask('${task.id}')" ${!task.enabled || isRunning ? 'disabled style="opacity:0.5"' : ''}>${isRunning ? '🔄 执行中' : '▶️ 运行'}</button>
                                     <button class="btn-task" onclick="editTask('${task.id}')">✏️ 编辑</button>
                                     <button class="btn-task ${toggleClass}" onclick="toggleTask('${task.id}')" ${isRunning ? 'disabled style="opacity:0.5"' : ''}>${toggleText}</button>
-                                    <button class="btn-task" onclick="viewTaskLogs()">📋 日志</button>
+                                    <button class="btn-task" onclick="viewTaskLogs('${task.id}', '${task.name}')">📋 日志</button>
                                 </div>
                             </div>
                         </div>
@@ -1396,7 +1499,10 @@
                 if (data.logs) {
                     const formattedLogs = formatLogs(data.logs);
                     logContent.innerHTML = formattedLogs;
-                    logContent.scrollTop = 0;
+                    // 使用 requestAnimationFrame 确保DOM更新后再滚动到底部显示最新日志
+                    requestAnimationFrame(() => {
+                        logContent.scrollTop = logContent.scrollHeight;
+                    });
                 } else {
                     logContent.innerHTML = '<div class="log-empty">暂无日志</div>';
                 }
@@ -1488,24 +1594,207 @@
             document.getElementById('editModal').classList.add('active');
         }
 
-        function viewTaskLogs() {
-            document.getElementById('logsModalTitle').textContent = '📋 调度器日志';
+        let currentTaskLogId = null;
+        let currentTaskLogName = null;
+        let taskLogRefreshInterval = null;
+
+        function viewTaskLogs(taskId, taskName) {
+            currentTaskLogId = taskId;
+            currentTaskLogName = taskName;
+            document.getElementById('logsModalTitle').textContent = `📋 ${taskName} - 任务日志`;
             document.getElementById('logsModal').classList.add('active');
-            loadSchedulerLogs();
+            loadTaskLogs();
+
+            // 启动自动刷新（如果任务正在运行）
+            startTaskLogAutoRefresh();
         }
 
+        async function loadTaskLogs() {
+            if (!currentTaskLogId) return;
+
+            const container = document.getElementById('taskLogsContent');
+            container.innerHTML = '<div class="log-empty">正在加载日志...</div>';
+
+            try {
+                const response = await fetch(`/api/task/log/latest/${currentTaskLogId}?lines=200`);
+                const data = await response.json();
+
+                if (data.content) {
+                    const formattedLogs = formatTaskLogs(data.content);
+                    container.innerHTML = formattedLogs;
+                    // 使用 requestAnimationFrame 确保DOM更新后再滚动到底部显示最新日志
+                    requestAnimationFrame(() => {
+                        container.scrollTop = container.scrollHeight;
+                    });
+
+                    // 如果任务正在运行，启动自动刷新
+                    if (data.is_running) {
+                        startTaskLogAutoRefresh();
+                    } else {
+                        stopTaskLogAutoRefresh();
+                    }
+                } else {
+                    container.innerHTML = '<div class="log-empty">暂无日志</div>';
+                }
+            } catch (error) {
+                container.innerHTML = `<div class="log-empty" style="color: #ff4d4f;">加载失败: ${error.message}</div>`;
+            }
+        }
+
+        function startTaskLogAutoRefresh() {
+            // 清除之前的定时器
+            stopTaskLogAutoRefresh();
+
+            // 每 3 秒自动刷新一次
+            taskLogRefreshInterval = setInterval(() => {
+                if (document.getElementById('logsModal').classList.contains('active')) {
+                    refreshTaskLogs();
+                } else {
+                    stopTaskLogAutoRefresh();
+                }
+            }, 3000);
+        }
+
+        function stopTaskLogAutoRefresh() {
+            if (taskLogRefreshInterval) {
+                clearInterval(taskLogRefreshInterval);
+                taskLogRefreshInterval = null;
+            }
+        }
+
+        async function refreshTaskLogs() {
+            if (!currentTaskLogId) return;
+
+            const container = document.getElementById('taskLogsContent');
+
+            try {
+                const response = await fetch(`/api/task/log/latest/${currentTaskLogId}?lines=200`);
+                const data = await response.json();
+
+                if (data.content) {
+                    const formattedLogs = formatTaskLogs(data.content);
+                    container.innerHTML = formattedLogs;
+                    // 滚动到底部
+                    requestAnimationFrame(() => {
+                        container.scrollTop = container.scrollHeight;
+                    });
+
+                    // 如果任务已结束，停止自动刷新
+                    if (!data.is_running) {
+                        stopTaskLogAutoRefresh();
+                    }
+                }
+            } catch (error) {
+                console.error('刷新日志失败:', error);
+            }
+        }
+
+        function formatTaskLogs(logs) {
+            if (!logs) return '';
+
+            return logs.split('\n').map(line => {
+                let cssClass = 'log-line';
+
+                // 根据前缀设置样式
+                if (line.includes('[ERR]')) {
+                    cssClass += ' error';
+                } else if (line.includes('[OUT]')) {
+                    cssClass += ' info';
+                } else if (line.includes('任务结束状态:')) {
+                    cssClass += ' success';
+                } else if (line.includes('任务:') || line.includes('开始时间:') || line.includes('结束时间:')) {
+                    cssClass += ' info';
+                }
+
+                // 转义 HTML 特殊字符
+                const escaped = line
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;');
+
+                return `<div class="${cssClass}">${escaped}</div>`;
+            }).join('');
+        }
+
+        // 为任务卡片加载日志
+        async function loadTaskLogForCard(taskId) {
+            const container = document.getElementById(`task-log-${taskId}`);
+            if (!container) return;
+
+            try {
+                const response = await fetch(`/api/task/log/latest/${taskId}?lines=100`);
+                const data = await response.json();
+
+                if (data.error) {
+                    container.innerHTML = `<div class="log-empty">❌ ${data.error}</div>`;
+                    return;
+                }
+
+                if (data.content && data.content.trim()) {
+                    const formattedLogs = formatTaskLogs(data.content);
+                    container.innerHTML = formattedLogs;
+                    // 滚动到底部显示最新日志
+                    requestAnimationFrame(() => {
+                        container.scrollTop = container.scrollHeight;
+                    });
+                } else {
+                    container.innerHTML = '<div class="log-empty">📭 暂无日志</div>';
+                }
+            } catch (error) {
+                console.error(`加载任务 ${taskId} 日志失败:`, error);
+                container.innerHTML = `<div class="log-empty" style="color: #ff4d4f;">❌ 加载失败: ${error.message}</div>`;
+            }
+        }
+
+        // 刷新任务卡片日志
+        async function refreshTaskLog(taskId) {
+            const container = document.getElementById(`task-log-${taskId}`);
+            if (!container) return;
+
+            // 显示加载状态
+            const originalContent = container.innerHTML;
+            container.innerHTML = '<div class="log-loading">🔄 刷新中...</div>';
+
+            try {
+                const response = await fetch(`/api/task/log/latest/${taskId}?lines=100`);
+                const data = await response.json();
+
+                if (data.error) {
+                    container.innerHTML = `<div class="log-empty">❌ ${data.error}</div>`;
+                    return;
+                }
+
+                if (data.content && data.content.trim()) {
+                    const formattedLogs = formatTaskLogs(data.content);
+                    container.innerHTML = formattedLogs;
+                    // 滚动到底部
+                    requestAnimationFrame(() => {
+                        container.scrollTop = container.scrollHeight;
+                    });
+                } else {
+                    container.innerHTML = '<div class="log-empty">📭 暂无日志</div>';
+                }
+            } catch (error) {
+                console.error(`刷新任务 ${taskId} 日志失败:`, error);
+                container.innerHTML = `<div class="log-empty" style="color: #ff4d4f;">❌ 刷新失败: ${error.message}</div>`;
+            }
+        }
+
+        // 原有的调度器日志功能保留
         async function loadSchedulerLogs() {
             const container = document.getElementById('taskLogsContent');
             container.innerHTML = '<div class="log-empty">正在加载日志...</div>';
-            
+
             try {
                 const response = await fetch('/api/scheduler/logs?lines=100');
                 const data = await response.json();
-                
+
                 if (data.logs) {
                     const formattedLogs = formatLogs(data.logs);
                     container.innerHTML = formattedLogs;
-                    container.scrollTop = 0;
+                    requestAnimationFrame(() => {
+                        container.scrollTop = container.scrollHeight;
+                    });
                 } else {
                     container.innerHTML = '<div class="log-empty">暂无日志</div>';
                 }
@@ -1528,6 +1817,19 @@
 
         function closeLogsModal() {
             document.getElementById('logsModal').classList.remove('active');
+            // 停止任务日志自动刷新
+            stopTaskLogAutoRefresh();
+            currentTaskLogId = null;
+            currentTaskLogName = null;
+        }
+
+        function refreshCurrentLogs() {
+            // 根据当前查看的日志类型进行刷新
+            if (currentTaskLogId) {
+                refreshTaskLogs();
+            } else {
+                loadSchedulerLogs();
+            }
         }
 
         async function confirmPasswordAction() {
