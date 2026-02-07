@@ -4,8 +4,8 @@ from botpy.message import DirectMessage, C2CMessage, GroupMessage
 from botpy.manage import C2CManageEvent
 
 # 替换成你的机器人凭证
-APPID = os.getenv("QQ_BOT_APPID", "102834902")
-SECRET = os.getenv("QQ_BOT_SECRET", "cSI90skdWQKPVbiqy7HRco0DQet8OfwE")  # 注意：新版SDK使用 secret 而不是 token
+APPID = os.getenv("QQ_BOT_APPID", "")
+SECRET = os.getenv("QQ_BOT_SECRET", "")  # 注意：新版SDK使用 secret 而不是 token
 
 logger = logging.get_logger()
 

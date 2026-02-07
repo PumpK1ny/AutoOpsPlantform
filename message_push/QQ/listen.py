@@ -21,8 +21,8 @@ from message_push.QQ.ai_chat import chat_with_user, _sessions, queue_user_messag
 from message_push.QQ.api_key_manager import api_key_manager
 
 # 机器人凭证配置
-APPID = os.getenv("QQ_BOT_APPID", "102834902")
-SECRET = os.getenv("QQ_BOT_SECRET", "cSI90skdWQKPVbiqy7HRco0DQet8OfwE")
+APPID = os.getenv("QQ_BOT_APPID", "")
+SECRET = os.getenv("QQ_BOT_SECRET", "")
 
 logger = logging.get_logger()
 
