@@ -17,11 +17,11 @@
 </p>
 
 <p align="center">
-  <a href="#快速开始">🚀 快速开始</a> •
-  <a href="#功能特性">✨ 功能</a> •
-  <a href="#界面预览">📸 预览</a> •
-  <a href="#技术栈">🛠️ 技术栈</a> •
-  <a href="#部署">📦 部署</a>
+  <a href="#-快速开始">🚀 快速开始</a> •
+  <a href="#-功能特性">✨ 功能</a> •
+  <a href="#-界面预览">📸 预览</a> •
+  <a href="#-技术栈">🛠️ 技术栈</a> •
+  <a href="#-部署指南">📦 部署</a>
 </p>
 
 </div>
@@ -145,12 +145,12 @@
 ### 环境要求
 
 - Python 3.8+
-- Windows / Ubuntu / macOS
+- Windows / Ubuntu Linux
 
 ### 1️⃣ 克隆项目
 
 ```bash
-git clone <repository-url>
+git clone https://gitcode.com/lannzy/auto_fund.git
 cd auto_fund
 ```
 
@@ -160,7 +160,7 @@ cd auto_fund
 # Windows
 python -m venv .venv && .venv\Scripts\activate
 
-# Ubuntu/macOS
+# Ubuntu/Linux
 python3 -m venv venv && source venv/bin/activate
 ```
 
@@ -171,10 +171,11 @@ pip install -r requirements.txt
 ```
 
 ### 4️⃣ 配置环境变量
-
+#### QQ机器人公开平台 https://q.qq.com/
+#### 智谱 AI API 密钥 https://open.bigmodel.cn/
 ```bash
 cp .env.example .env
-# 编辑 .env 文件，填入你的 API 密钥
+# 编辑 .env 文件，填入你的 API 密钥以及 QQ 机器人配置信息
 ```
 
 ### 5️⃣ 启动服务
@@ -191,13 +192,16 @@ python message_push/QQ/run.py
 # 启动任务调度器
 python scheduler/scheduler.py
 
-# 方式二：一键启动所有服务（Windows）
-scripts\start_all.bat
+# 方式二：配置开机启动和三个服务同时启动，参考部署指南
 ```
 
 访问 http://localhost:5000 查看 Web 界面
 
 ---
+
+## 注意事项
+- `任务调度器`中的任务如果依赖`QQ 机器人`，请确保`QQ 机器人`已启动并配置好，最好是所有配置均按照部署指南配置好开机后台自启动，确保服务正常运行。
+- `隐私信息`（如 API 密钥、QQ 机器人 AppID 等）请妥善保管，避免泄露给他人，切记不可暴露在公共仓库中或前端日志中
 
 ## ⚙️ 配置说明
 
@@ -241,17 +245,6 @@ FLASK_DEBUG=false
       },
       "enabled": true,
       "description": "每天早上8点生成基金新闻摘要"
-    },
-    {
-      "id": "fund_analysis",
-      "name": "基金定时分析",
-      "command": "python AI/core.py",
-      "schedule": {
-        "type": "interval",
-        "minutes": 60
-      },
-      "enabled": true,
-      "description": "每小时执行一次基金分析"
     }
   ]
 }
@@ -290,11 +283,14 @@ FLASK_DEBUG=false
 </details>
 
 <details>
-<summary><b>🐧 Ubuntu 部署（systemd 服务）</b></summary>
+<summary><b>🐧 Ubuntu 部署（推荐⭐）</b></summary>
 
 ```bash
 # 进入脚本目录
 cd scripts
+
+# 为脚本添加执行权限
+chmod +x *.sh
 
 # 安装 systemd 服务（需要 root 权限）
 sudo ./install_service.sh
@@ -324,25 +320,6 @@ sudo ./uninstall_service.sh
 
 </details>
 
-<details>
-<summary><b>🐳 Docker 部署（可选）</b></summary>
-
-```bash
-# 构建镜像
-docker build -t eros-fund .
-
-# 运行容器
-docker run -d \
-  --name eros-fund \
-  -p 5000:5000 \
-  -v $(pwd)/.env:/app/.env \
-  -v $(pwd)/data:/app/data \
-  eros-fund
-```
-
-</details>
-
-
 
 ## 🔧 开发指南
 
@@ -362,32 +339,8 @@ docker run -d \
 
 1. 在 `message_push/` 下创建新的推送渠道目录
 2. 实现标准推送接口
-3. 在调度任务中调用推送接口
+3. 在调度任务中调用推送接口，当任务执行完成时触发推送
 
----
-
-## 📋 更新日志
-
-### v1.0.0 (2024-XX-XX)
-
-- ✨ 初始版本发布
-- 🤖 集成智谱 AI GLM 模型
-- 📊 基金数据实时监控
-- ⏰ 任务调度系统
-- 📱 QQ 机器人推送
-- 🌐 Web 管理界面
-
----
-
-## 🤝 贡献指南
-
-欢迎提交 Issue 和 Pull Request！
-
-1. Fork 本仓库
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 创建 Pull Request
 
 ---
 
