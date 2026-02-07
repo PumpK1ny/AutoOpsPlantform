@@ -10,15 +10,20 @@ numpy>=1.21.0
 
 # 网络请求
 requests>=2.25.0
-urllib3>=1.26.0
+aiohttp>=3.8.0
 
 # 工具库
 python-dotenv>=0.19.0
 schedule>=1.1.0
 pytz>=2021.1
 
-# 日志
-logging
+# 数据爬取/解析
+akshare>=1.10.0
+beautifulsoup4>=4.10.0
+PyPDF2>=3.0.0
 
-# 其他
-pathlib
+# 数据可视化
+matplotlib>=3.5.0
+
+# QQ 机器人
+botpy>=1.2.0
