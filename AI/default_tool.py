@@ -259,7 +259,6 @@ def run_command(command, timeout=60, cwd=None):
             "message": f"命令执行失败：{str(e)}",
             "command": command
         }
-   
 
 class Todo:
     def __init__(self):
