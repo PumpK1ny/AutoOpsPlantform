@@ -58,9 +58,9 @@ class ZhipuChat:
         self.show_thinking_content = os.getenv("ZHIPU_SHOW_THINKING_CONTENT", "true").lower() == "true"
         
         self.default_max_tokens = get_env_int("ZHIPU_DEFAULT_MAX_TOKENS", "16384")
-        self.default_temperature = get_env_float("ZHIPU_DEFAULT_TEMPERATURE", "0.2")
-        self.default_top_p = get_env_float("ZHIPU_DEFAULT_TOP_P", "0.2")
-        self.stream_timeout = get_env_int("ZHIPU_STREAM_TIMEOUT", "60")
+        self.default_temperature = get_env_float("ZHIPU_DEFAULT_TEMPERATURE", "0.8")
+        self.default_top_p = get_env_float("ZHIPU_DEFAULT_TOP_P", "0.8")
+        self.stream_timeout = get_env_int("ZHIPU_STREAM_TIMEOUT", "600")
         
         if not self.api_key:
             raise ValueError("API密钥未提供，请设置环境变量ZHIPU_API_KEY或传入api_key参数")
