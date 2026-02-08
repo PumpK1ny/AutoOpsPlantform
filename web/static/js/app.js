@@ -14,14 +14,16 @@ const ThemeManager = {
         const hour = new Date().getHours();
         const isNightTime = hour < 6 || hour >= 18;
         
-        // 优先级：保存的主题 > 系统偏好 > 时间判断
+        // 优先级：时间判断 > 系统偏好 > 保存的主题
+        // 根据当前时间自动切换主题，忽略保存的主题
         let theme = 'light';
-        if (savedTheme) {
-            theme = savedTheme;
+        if (isNightTime) {
+            theme = 'dark';
         } else if (systemPrefersDark) {
             theme = 'dark';
-        } else if (isNightTime) {
-            theme = 'dark';
+        } else if (savedTheme && !isNightTime) {
+            // 只有在非夜间时间才使用保存的主题
+            theme = savedTheme;
         }
         
         this.applyTheme(theme);
@@ -29,7 +31,10 @@ const ThemeManager = {
         
         // 监听系统主题变化
         window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-            if (!localStorage.getItem(this.STORAGE_KEY)) {
+            const hour = new Date().getHours();
+            const isNightTime = hour < 6 || hour >= 18;
+            // 只有在非夜间时间才响应系统主题变化
+            if (!isNightTime && !localStorage.getItem(this.STORAGE_KEY)) {
                 this.applyTheme(e.matches ? 'dark' : 'light');
             }
         });
