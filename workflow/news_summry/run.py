@@ -70,7 +70,22 @@ if __name__ == "__main__":
                 print(f"等待 2 秒后重试...")
                 time.sleep(2)
     
+
     end_time = time.time()
     duration = end_time - start_time
+
+    try_num = 3
+    while try_num > 0:
+        try:
+            send_workflow_notification(success, start_time_str, duration, error_msg, retry_count)
+            print(f"通知发送成功")
+            break
+        except:
+            try_num -= 1
+            print(f"第 {try_num} 次尝试发送通知失败")
+            print(f"等待 5 秒后重试...")
+            time.sleep(5)
+
     print(f"\n运行时间：{duration:.2f}秒")
-    send_workflow_notification(success, start_time_str, duration, error_msg, retry_count - 1 if success else 0)
+    print("工作流运行完成")
+    print("="*50)
