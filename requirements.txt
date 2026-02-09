@@ -27,3 +27,4 @@ matplotlib>=3.5.0
 
 # QQ 机器人
 qq-botpy
+sniffio
