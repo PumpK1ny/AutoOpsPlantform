@@ -35,10 +35,10 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # 检查虚拟环境
-PYTHON_PATH="$PROJECT_DIR/venv/bin/python"
+PYTHON_PATH="$PROJECT_DIR/.venv/bin/python"
 if [ ! -f "$PYTHON_PATH" ]; then
     echo -e "${RED}[ERROR] 虚拟环境不存在: $PYTHON_PATH${NC}"
-    echo "请先创建虚拟环境: python3 -m venv venv"
+    echo "请先创建虚拟环境: python3 -m venv .venv"
     exit 1
 fi
 
