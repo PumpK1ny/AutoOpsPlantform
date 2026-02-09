@@ -26,4 +26,4 @@ PyPDF2>=3.0.0
 matplotlib>=3.5.0
 
 # QQ 机器人
-botpy>=1.2.0
+qq-botpy
