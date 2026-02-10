@@ -348,16 +348,6 @@ sudo ./uninstall_service.sh
 
 本项目基于 [MIT](LICENSE) 协议开源。
 
----
-
-<div align="center">
-
-### 🌟 Star 历史
-
-[![Star History Chart](https://api.star-history.com/svg?repos=yourname/auto_fund&type=Date)](https://star-history.com/#yourname/auto_fund&Date)
-
----
-
 **Made with ❤️ by Eros Team**
 
 <p align="center">
