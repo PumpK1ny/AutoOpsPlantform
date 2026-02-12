@@ -26,10 +26,11 @@ import os
 import sys
 import asyncio
 import json
+import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from threading import Thread
+from datetime import datetime, timedelta
 
-# 添加项目根目录到路径
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
@@ -38,61 +39,84 @@ from message_push.QQ.listen import run_listener, APPID, SECRET, logger
 from botpy.http import BotHttp
 from botpy.robot import Token
 
-# HTTP API 配置
 HTTP_HOST = os.getenv("QQ_BOT_HTTP_HOST", "0.0.0.0")
 HTTP_PORT = int(os.getenv("QQ_BOT_HTTP_PORT", "8080"))
+TOKEN_REFRESH_INTERVAL = int(os.getenv("QQ_BOT_TOKEN_REFRESH_INTERVAL", "300"))
 
-# 全局 HTTP 客户端（用于主动推送）
 _http_client = None
 _http_client_lock = asyncio.Lock()
+_last_login_time = None
+_login_count = 0
 
 
-async def get_http_client():
-    """获取或创建 HTTP 客户端"""
-    global _http_client
+async def get_http_client(force_refresh: bool = False):
+    """获取或创建 HTTP 客户端，支持自动刷新token"""
+    global _http_client, _last_login_time, _login_count
+    
     async with _http_client_lock:
-        if _http_client is None:
-            token = Token(APPID, SECRET)
-            _http_client = BotHttp(timeout=5)
-            await _http_client.login(token)
-            logger.info("✅ HTTP 客户端已初始化")
+        now = datetime.now()
+        
+        need_refresh = (
+            force_refresh or 
+            _http_client is None or 
+            _last_login_time is None or
+            (now - _last_login_time).total_seconds() > TOKEN_REFRESH_INTERVAL
+        )
+        
+        if need_refresh:
+            try:
+                if _http_client is not None:
+                    try:
+                        _http_client.close()
+                    except:
+                        pass
+                
+                token = Token(APPID, SECRET)
+                _http_client = BotHttp(timeout=10)
+                await _http_client.login(token)
+                _last_login_time = now
+                _login_count += 1
+                logger.info(f"✅ HTTP 客户端已初始化/刷新 (第{_login_count}次)")
+            except Exception as e:
+                logger.error(f"❌ HTTP 客户端初始化失败: {e}")
+                _http_client = None
+                raise
+        
         return _http_client
 
 
-async def send_notification(openid: str, content: str, msg_type: str = "c2c"):
-    """
-    发送通知消息
+async def send_notification_with_retry(openid: str, content: str, msg_type: str = "c2c", max_retries: int = 3):
+    """发送通知消息，支持自动重试和token刷新"""
+    last_error = None
     
-    Args:
-        openid: 用户或群组的 openid
-        content: 消息内容
-        msg_type: 消息类型，c2c 或 group
+    for attempt in range(max_retries):
+        try:
+            force_refresh = attempt > 0
+            http = await get_http_client(force_refresh=force_refresh)
+            
+            if msg_type == "c2c":
+                from botpy.http import Route
+                route = Route("POST", f"/v2/users/{openid}/messages")
+                result = await http.request(route, json={"content": content})
+            elif msg_type == "group":
+                from botpy.http import Route
+                route = Route("POST", f"/v2/groups/{openid}/messages")
+                result = await http.request(route, json={"content": content})
+            else:
+                return {"success": False, "error": f"不支持的消息类型: {msg_type}"}
+            
+            logger.info(f"✅ 通知发送成功 [{msg_type}]: {openid}")
+            return {"success": True, "result": result}
+            
+        except Exception as e:
+            last_error = str(e)
+            logger.warning(f"⚠️ 第 {attempt + 1} 次发送失败: {last_error}")
+            
+            if attempt < max_retries - 1:
+                await asyncio.sleep(1)
     
-    Returns:
-        dict: 发送结果
-    """
-    try:
-        http = await get_http_client()
-        
-        if msg_type == "c2c":
-            # 发送 C2C 单聊消息
-            from botpy.http import Route
-            route = Route("POST", f"/v2/users/{openid}/messages")
-            result = await http.request(route, json={"content": content})
-        elif msg_type == "group":
-            # 发送群聊消息
-            from botpy.http import Route
-            route = Route("POST", f"/v2/groups/{openid}/messages")
-            result = await http.request(route, json={"content": content})
-        else:
-            return {"success": False, "error": f"不支持的消息类型: {msg_type}"}
-        
-        logger.info(f"✅ 通知发送成功 [{msg_type}]: {openid}")
-        return {"success": True, "result": result}
-    
-    except Exception as e:
-        logger.error(f"❌ 通知发送失败: {e}")
-        return {"success": False, "error": str(e)}
+    logger.error(f"❌ 通知发送失败 (重试{max_retries}次后): {last_error}")
+    return {"success": False, "error": last_error}
 
 
 class NotifyHandler(BaseHTTPRequestHandler):
@@ -126,15 +150,12 @@ class NotifyHandler(BaseHTTPRequestHandler):
             self._send_json(404, {"error": "Not Found"})
     
     def do_POST(self):
-        """处理 POST 请求"""
         if self.path == "/api/notify":
             try:
-                # 读取请求体
                 content_length = int(self.headers.get("Content-Length", 0))
                 post_data = self.rfile.read(content_length).decode("utf-8")
                 data = json.loads(post_data)
                 
-                # 验证参数
                 openid = data.get("openid")
                 content = data.get("content")
                 msg_type = data.get("msg_type", "c2c")
@@ -147,10 +168,11 @@ class NotifyHandler(BaseHTTPRequestHandler):
                     self._send_json(400, {"success": False, "error": "缺少参数: content"})
                     return
                 
-                # 使用 asyncio 运行异步发送函数
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                result = loop.run_until_complete(send_notification(openid, content, msg_type))
+                result = loop.run_until_complete(
+                    send_notification_with_retry(openid, content, msg_type, max_retries=3)
+                )
                 loop.close()
                 
                 if result["success"]:

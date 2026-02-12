@@ -180,17 +180,7 @@ class ChatAI:
         # 加载工具
         self.load_tools_from_file("message_push/QQ/bot_tool.json")
 
-    async def send_message(self, content: str, msg_type: str = "c2c") -> dict:
-        """
-        发送消息到QQ
-
-        Args:
-            content: 消息内容
-            msg_type: 消息类型，c2c 或 group
-
-        Returns:
-            dict: 发送结果
-        """
+    async def send_message(self, content: str, msg_type: str = "c2c", max_retries: int = 3) -> dict:
         if self.msg_api:
             try:
                 messages = [content]
@@ -220,23 +210,8 @@ class ChatAI:
             except Exception as e:
                 return {"success": False, "error": str(e)}
         else:
-            url = f"{HTTP_API_BASE_URL}/api/notify"
-            payload = {
-                "openid": self.user_openid,
-                "content": content,
-                "msg_type": msg_type
-            }
-            try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(url, json=payload) as response:
-                        result = await response.json()
-                        if response.status == 200 and result.get("success"):
-                            return result
-                        else:
-                            error = result.get("error", "未知错误")
-                            return {"success": False, "error": error}
-            except Exception as e:
-                return {"success": False, "error": str(e)}
+            from message_push.QQ.qq_bot_push import send_notification_with_health_check
+            return await send_notification_with_health_check(self.user_openid, content, msg_type)
 
     def register_tool_function(self, name, func):
         """注册工具函数"""

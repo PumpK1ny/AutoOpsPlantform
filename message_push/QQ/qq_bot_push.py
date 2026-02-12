@@ -1,100 +1,101 @@
 import os
 import asyncio
 import aiohttp
+import time
 
-# 加载环境变量
 from dotenv import load_dotenv
 load_dotenv()
 
-# HTTP API 配置
 HTTP_API_BASE_URL = os.getenv("QQ_BOT_HTTP_API_URL", "http://localhost:8080")
-
-# 目标用户/群组openid（用户添加机器人后，可通过事件监听获取）
-TARGET_C2C_OPENID = os.getenv("QQ_TARGET_C2C_OPENID", "")  # C2C单聊用户openid
-TARGET_GROUP_OPENID = os.getenv("QQ_TARGET_GROUP_OPENID", "")  # 群聊openid（可选）
+TARGET_C2C_OPENID = os.getenv("QQ_TARGET_C2C_OPENID", "")
+TARGET_GROUP_OPENID = os.getenv("QQ_TARGET_GROUP_OPENID", "")
 
 
-async def push_c2c_message(openid: str, content: str) -> dict:
-    """
-    通过 HTTP API 发送 C2C 单聊消息
-
-    参数:
-        openid: 目标用户openid
-        content: 消息内容
-
-    Returns:
-        dict: 发送结果
-    """
-    return await send_notification(openid, content, msg_type="c2c")
-
-
-async def push_group_message(group_openid: str, content: str) -> dict:
-    """
-    通过 HTTP API 发送群聊消息
-
-    参数:
-        group_openid: 目标群openid
-        content: 消息内容
-
-    Returns:
-        dict: 发送结果
-    """
-    return await send_notification(group_openid, content, msg_type="group")
+async def check_service_health(max_retries: int = 3, retry_delay: float = 2.0) -> bool:
+    """检查 QQ bot HTTP 服务是否可用"""
+    url = f"{HTTP_API_BASE_URL}/health"
+    
+    for attempt in range(max_retries):
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as response:
+                    if response.status == 200:
+                        return True
+                    print(f"⚠️ 服务健康检查失败: HTTP {response.status}")
+        except asyncio.TimeoutError:
+            print(f"⚠️ 服务健康检查超时 (尝试 {attempt + 1}/{max_retries})")
+        except aiohttp.ClientError as e:
+            print(f"⚠️ 服务健康检查失败: {e} (尝试 {attempt + 1}/{max_retries})")
+        except Exception as e:
+            print(f"⚠️ 服务健康检查异常: {e} (尝试 {attempt + 1}/{max_retries})")
+        
+        if attempt < max_retries - 1:
+            await asyncio.sleep(retry_delay)
+    
+    return False
 
 
-async def send_notification(openid: str, content: str, msg_type: str = "c2c") -> dict:
-    """
-    通过 HTTP API 发送通知消息
-
-    参数:
-        openid: 用户或群组的 openid
-        content: 消息内容
-        msg_type: 消息类型，c2c 或 group
-
-    Returns:
-        dict: 发送结果
-    """
+async def send_notification(openid: str, content: str, msg_type: str = "c2c", max_retries: int = 3) -> dict:
+    """通过 HTTP API 发送通知消息，支持自动重试"""
     url = f"{HTTP_API_BASE_URL}/api/notify"
     payload = {
         "openid": openid,
         "content": content,
         "msg_type": msg_type
     }
+    
+    last_error = None
+    
+    for attempt in range(max_retries):
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    url, 
+                    json=payload, 
+                    timeout=aiohttp.ClientTimeout(total=15)
+                ) as response:
+                    result = await response.json()
+                    if response.status == 200 and result.get("success"):
+                        print(f"✅ 通知发送成功 [{msg_type}]: {openid}")
+                        return result
+                    else:
+                        last_error = result.get("error", "未知错误")
+                        print(f"⚠️ 发送失败 (尝试 {attempt + 1}/{max_retries}): {last_error}")
+        except asyncio.TimeoutError:
+            last_error = "请求超时"
+            print(f"⚠️ 请求超时 (尝试 {attempt + 1}/{max_retries})")
+        except aiohttp.ClientError as e:
+            last_error = f"HTTP 请求失败: {e}"
+            print(f"⚠️ {last_error} (尝试 {attempt + 1}/{max_retries})")
+        except Exception as e:
+            last_error = str(e)
+            print(f"⚠️ 发送异常: {last_error} (尝试 {attempt + 1}/{max_retries})")
+        
+        if attempt < max_retries - 1:
+            await asyncio.sleep(1)
+    
+    print(f"❌ 通知发送失败 (重试{max_retries}次后): {last_error}")
+    return {"success": False, "error": last_error}
 
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload) as response:
-                result = await response.json()
-                if response.status == 200 and result.get("success"):
-                    print(f"✅ 通知发送成功 [{msg_type}]: {openid}")
-                    return result
-                else:
-                    error = result.get("error", "未知错误")
-                    print(f"❌ 通知发送失败: {error}")
-                    return result
-    except aiohttp.ClientError as e:
-        error_msg = f"HTTP 请求失败: {e}"
-        print(f"❌ {error_msg}")
-        return {"success": False, "error": error_msg}
-    except Exception as e:
-        error_msg = str(e)
-        print(f"❌ 通知发送失败: {error_msg}")
-        return {"success": False, "error": error_msg}
+
+async def send_notification_with_health_check(openid: str, content: str, msg_type: str = "c2c") -> dict:
+    """先检查服务健康状态，再发送通知"""
+    if not await check_service_health():
+        return {"success": False, "error": "QQ bot 服务不可用"}
+    
+    return await send_notification(openid, content, msg_type)
+
+
+async def push_c2c_message(openid: str, content: str) -> dict:
+    return await send_notification(openid, content, msg_type="c2c")
+
+
+async def push_group_message(group_openid: str, content: str) -> dict:
+    return await send_notification(group_openid, content, msg_type="group")
 
 
 def send_notification_sync(openid: str, content: str, msg_type: str = "c2c") -> dict:
-    """
-    同步方式发送通知（供非异步代码调用）
-
-    参数:
-        openid: 用户或群组的 openid
-        content: 消息内容
-        msg_type: 消息类型，c2c 或 group
-
-    Returns:
-        dict: 发送结果
-    """
-    return asyncio.run(send_notification(openid, content, msg_type))
+    return asyncio.run(send_notification_with_health_check(openid, content, msg_type))
 
 
 async def main():
