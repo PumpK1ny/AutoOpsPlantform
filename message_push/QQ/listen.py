@@ -7,11 +7,28 @@ import asyncio
 import os
 import sys
 import random
+import logging as std_logging
+from logging.handlers import TimedRotatingFileHandler
 
-# 加载环境变量
+QQ_MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_DIR = os.path.join(QQ_MODULE_DIR, "log")
+os.makedirs(LOG_DIR, exist_ok=True)
+
+CUSTOM_FILE_HANDLER = {
+    "handler": TimedRotatingFileHandler,
+    "format": "%(asctime)s\t[%(levelname)s]\t(%(filename)s:%(lineno)s)%(funcName)s\t%(message)s",
+    "level": std_logging.DEBUG,
+    "when": "D",
+    "backupCount": 7,
+    "encoding": "utf-8",
+    "filename": os.path.join(LOG_DIR, "%(name)s.log"),
+}
+
+logging.configure_logging(ext_handlers=CUSTOM_FILE_HANDLER, force=True)
+
 from dotenv import load_dotenv
 load_dotenv()
-# 添加项目根目录到路径
+
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
@@ -20,7 +37,6 @@ from message_push.QQ.handlers import load_handlers
 from message_push.QQ.ai_chat import chat_with_user, _sessions, queue_user_message, get_pending_messages, clear_pending_messages
 from message_push.QQ.api_key_manager import api_key_manager
 
-# 机器人凭证配置
 APPID = os.getenv("QQ_BOT_APPID", "")
 SECRET = os.getenv("QQ_BOT_SECRET", "")
 
@@ -197,7 +213,6 @@ class MessageListener:
         content = message.content or ""
         user_openid = getattr(message.author, 'user_openid', getattr(message.author, 'id', 'unknown'))
 
-        # 忽略图片附件，只处理文本消息
         logger.info(f"[{msg_type}] 用户 {user_openid}: {content[:50]}...")
 
         handler = self._find_handler(content)
