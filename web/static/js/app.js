@@ -14,27 +14,29 @@ const ThemeManager = {
         const hour = new Date().getHours();
         const isNightTime = hour < 6 || hour >= 18;
         
-        // 优先级：时间判断 > 系统偏好 > 保存的主题
-        // 根据当前时间自动切换主题，忽略保存的主题
-        let theme = 'light';
-        if (isNightTime) {
+        // 优先级：用户保存的主题 > 时间判断 > 系统偏好
+        let theme;
+        if (savedTheme) {
+            // 用户手动选择的主题优先级最高
+            theme = savedTheme;
+        } else if (isNightTime) {
+            // 夜间时间自动切换暗色
             theme = 'dark';
         } else if (systemPrefersDark) {
+            // 非夜间时间，跟随系统偏好
             theme = 'dark';
-        } else if (savedTheme && !isNightTime) {
-            // 只有在非夜间时间才使用保存的主题
-            theme = savedTheme;
+        } else {
+            // 默认亮色
+            theme = 'light';
         }
         
         this.applyTheme(theme);
         this.createToggleButton();
         
-        // 监听系统主题变化
+        // 监听系统主题变化（仅当用户没有手动设置主题时才响应）
         window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-            const hour = new Date().getHours();
-            const isNightTime = hour < 6 || hour >= 18;
-            // 只有在非夜间时间才响应系统主题变化
-            if (!isNightTime && !localStorage.getItem(this.STORAGE_KEY)) {
+            const savedTheme = localStorage.getItem(this.STORAGE_KEY);
+            if (!savedTheme) {
                 this.applyTheme(e.matches ? 'dark' : 'light');
             }
         });
